@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { gqlClient } from "./lib/amplifyClient";
 
-type Props = {
-  lang?: "pt" | "en" | "es";
-};
 
 
 type UserType = "CLIENT" | "BROKER" | "PARTNER" | "BOTH";

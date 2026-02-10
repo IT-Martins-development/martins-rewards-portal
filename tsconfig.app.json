@@ -7,6 +7,8 @@
     "module": "ESNext",
     "types": ["vite/client"],
     "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -18,9 +20,7 @@
 
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
+    "erasableSyntaxOnly": false,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },

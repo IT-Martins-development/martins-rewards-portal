@@ -99,7 +99,7 @@ function badgeStyle(statusRaw: string): React.CSSProperties {
    Component
 ======================= */
 
-export default function RewardsApprovals({ lang }: RewardsApprovalsProps) {
+export default function RewardsApprovals({ lang: _lang }: RewardsApprovalsProps) {
   const [items, setItems] = useState<Redemption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
