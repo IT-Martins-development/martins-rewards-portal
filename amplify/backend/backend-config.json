@@ -1,0 +1,119 @@
+{
+  "api": {
+    "martinsrewards": {
+      "dependsOn": [
+        {
+          "attributes": [
+            "UserPoolId"
+          ],
+          "category": "auth",
+          "resourceName": "martinsrewards69c1614b"
+        }
+      ],
+      "output": {
+        "authConfig": {
+          "additionalAuthenticationProviders": [
+            {
+              "apiKeyConfig": {
+                "apiKeyExpirationDate": "2027-01-27T20:32:31.845Z",
+                "apiKeyExpirationDays": 365,
+                "description": "api key"
+              },
+              "authenticationType": "API_KEY"
+            }
+          ],
+          "defaultAuthentication": {
+            "authenticationType": "AMAZON_COGNITO_USER_POOLS",
+            "userPoolConfig": {
+              "userPoolId": "authmartinsrewards69c1614b"
+            }
+          }
+        }
+      },
+      "providerPlugin": "awscloudformation",
+      "service": "AppSync"
+    }
+  },
+  "auth": {
+    "martinsrewards69c1614b": {
+      "customAuth": false,
+      "dependsOn": [],
+      "providerPlugin": "awscloudformation",
+      "service": "Cognito",
+      "serviceType": "imported"
+    }
+  },
+  "function": {
+    "RewardsMongo": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
+  },
+  "parameters": {
+    "AMPLIFY_auth_martinsrewards69c1614b_nativeClientId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "martinsrewards69c1614b"
+        }
+      ]
+    },
+    "AMPLIFY_auth_martinsrewards69c1614b_userPoolId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "martinsrewards69c1614b"
+        }
+      ]
+    },
+    "AMPLIFY_auth_martinsrewards69c1614b_userPoolName": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "martinsrewards69c1614b"
+        }
+      ]
+    },
+    "AMPLIFY_auth_martinsrewards69c1614b_webClientId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "martinsrewards69c1614b"
+        }
+      ]
+    },
+    "AMPLIFY_function_RewardsMongo_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "RewardsMongo"
+        }
+      ]
+    },
+    "AMPLIFY_function_RewardsMongo_mongoDb": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "RewardsMongo"
+        }
+      ]
+    },
+    "AMPLIFY_function_RewardsMongo_mongoUri": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "RewardsMongo"
+        }
+      ]
+    },
+    "AMPLIFY_function_RewardsMongo_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "RewardsMongo"
+        }
+      ]
+    }
+  }
+}

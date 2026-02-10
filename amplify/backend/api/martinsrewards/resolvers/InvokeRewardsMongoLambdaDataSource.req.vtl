@@ -1,0 +1,17 @@
+## [Start] Invoke AWS Lambda data source: RewardsMongoLambdaDataSource. **
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "typeName": "$util.defaultIfNull($ctx.stash.get("typeName"), $ctx.info.parentTypeName)",
+    "fieldName": "$util.defaultIfNull($ctx.stash.get("fieldName"), $ctx.info.fieldName)",
+    "arguments": $util.toJson($ctx.arguments),
+    "identity": $util.toJson($ctx.identity),
+    "source": $util.toJson($ctx.source),
+    "request": $util.toJson($ctx.request),
+    "info": $util.toJson($ctx.info),
+    "stash": $util.toJson($ctx.stash),
+    "prev": $util.toJson($ctx.prev)
+  }
+}
+## [End] Invoke AWS Lambda data source: RewardsMongoLambdaDataSource. **

@@ -1,0 +1,36 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-martinsrewards-dev-e7c64-authRole",
+      "UnauthRoleArn": "arn:aws:iam::225989369521:role/amplify-martinsrewards-dev-e7c64-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::225989369521:role/amplify-martinsrewards-dev-e7c64-authRole",
+      "Region": "us-east-2",
+      "DeploymentBucketName": "amplify-martinsrewards-dev-e7c64-deployment",
+      "UnauthRoleName": "amplify-martinsrewards-dev-e7c64-unauthRole",
+      "StackName": "amplify-martinsrewards-dev-e7c64",
+      "StackId": "arn:aws:cloudformation:us-east-2:225989369521:stack/amplify-martinsrewards-dev-e7c64/aba251a0-fb81-11f0-bd61-023100b9c321",
+      "AmplifyAppId": "d3uz5xfdtsbho6"
+    },
+    "categories": {
+      "api": {
+        "martinsrewards": {}
+      },
+      "auth": {
+        "martinsrewards69c1614b": {
+          "userPoolId": "us-east-2_J1tQgVm42",
+          "userPoolName": "Martins-01",
+          "webClientId": "43rdma1om3vhmovk5hdr7desr2",
+          "nativeClientId": "43rdma1om3vhmovk5hdr7desr2"
+        }
+      },
+      "function": {
+        "RewardsMongo": {
+          "deploymentBucketName": "amplify-martinsrewards-dev-e7c64-deployment",
+          "s3Key": "amplify-builds/RewardsMongo-37317558352f365a7641-build.zip",
+          "mongoDb": "martins",
+          "mongoUri": "mongodb+srv://martinsventurix:WsHP4jvMeCLIbAwo@prodcluster.ev9b0.mongodb.net/"
+        }
+      }
+    }
+  }
+}
