@@ -115,7 +115,7 @@ export default function RewardsUserPortal() {
       const groups =
         session.tokens?.idToken?.payload["cognito:groups"] as string[] | undefined;
 
-      if (!groups?.includes("investor")) {
+      if (!groups?.includes("Investor")) {
         window.location.href = "/"; // ou "/403"
       }
     }
