@@ -13,8 +13,8 @@ import RewardsApprovals from "./RewardsApprovals";
 import RewardsReport from "./RewardsReport";
 import RewardsBalancesReport from "./RewardsBalancesReport";
 import RewardsUser from "./RewardsUser";
-import type { Lang } from "./types/lang";
 
+import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
 Amplify.configure(awsExports);
@@ -79,8 +79,11 @@ const contentWrap: React.CSSProperties = {
 
 const topbar: React.CSSProperties = {
   display: "flex",
-  justifyContent: "flex-end",
-  marginBottom: 10,
+  justifyContent: "space-between",
+  gap: 10,
+  alignItems: "center",
+  marginBottom: 12,
+  flexWrap: "wrap",
 };
 
 const logoutBtn: React.CSSProperties = {
@@ -90,6 +93,18 @@ const logoutBtn: React.CSSProperties = {
   background: "#6b5a2b",
   color: "#fff",
   cursor: "pointer",
+  fontWeight: 800,
+};
+
+const selectDark: React.CSSProperties = {
+  height: 36,
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,.18)",
+  background: "rgba(255,255,255,.06)",
+  color: "#fff",
+  padding: "0 10px",
+  fontWeight: 800,
+  outline: "none",
 };
 
 function normalizeGroups(groups?: string[]) {
@@ -100,6 +115,8 @@ function roleFromGroups(groups?: string[]): Role {
   const g = normalizeGroups(groups);
   const isAdmin = g.includes("adminrewards");
   const isInvestor = g.includes("investor");
+
+  // prioridade: Admin > Investor
   if (isAdmin) return "ADMIN";
   if (isInvestor) return "INVESTOR";
   return "NONE";
@@ -123,11 +140,10 @@ function AppShell({ signOut }: { signOut?: () => void }) {
       setChecking(true);
       try {
         const session = await fetchAuthSession();
-        const groups = (session.tokens?.idToken?.payload?.["cognito:groups"] as string[]) || [];
+        const groups =
+          (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) || [];
         const r = roleFromGroups(groups);
 
-        // Regra pedida: Investor NÃO pode cair no admin.
-        // Se tiver AdminRewards, entra admin. Se não, e tiver Investor, entra portal user.
         if (!cancelled) setRole(r);
       } catch {
         if (!cancelled) setRole("NONE");
@@ -142,7 +158,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     };
   }, []);
 
-  // Enquanto checa grupos
+  // Loading
   if (checking) {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
@@ -153,21 +169,57 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     );
   }
 
-  // Investor: mostra somente o portal do usuário (sem menu admin)
+  // INVESTOR (portal do usuário)
   if (role === "INVESTOR") {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9" }}>
-        <div style={{ display: "flex", justifyContent: "flex-end", padding: 14, maxWidth: 1200, margin: "0 auto" }}>
-          <button style={logoutBtn} onClick={() => signOut?.()}>
-            Sair
-          </button>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: 14,
+            maxWidth: 1200,
+            margin: "0 auto",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontWeight: 900, color: "#111827" }}>Martins Rewards</div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value as Lang)}
+              style={{
+                height: 36,
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.14)",
+                background: "#fff",
+                color: "#111827",
+                padding: "0 10px",
+                fontWeight: 800,
+                outline: "none",
+              }}
+              aria-label="Language"
+            >
+              <option value="pt">PT</option>
+              <option value="en">EN</option>
+              <option value="es">ES</option>
+            </select>
+
+            <button style={{ ...logoutBtn, background: "#7A5A3A" }} onClick={() => signOut?.()}>
+              Sair
+            </button>
+          </div>
         </div>
+
         <RewardsUser lang={lang} />
       </div>
     );
   }
 
-  // Sem grupo permitido
+  // NONE
   if (role === "NONE") {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
@@ -194,12 +246,23 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     );
   }
 
-  // ADMIN: mantém exatamente o layout/cores/menus atuais
+  // ADMIN (layout atual)
   return (
     <div style={shell}>
       <div style={layout}>
         <aside style={sidebar}>
           <div style={brand}>• Martins Rewards</div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <div style={{ opacity: 0.75, fontSize: 12, fontWeight: 900, letterSpacing: 0.6 }}>
+              LANG
+            </div>
+            <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} style={selectDark}>
+              <option value="pt">PT</option>
+              <option value="en">EN</option>
+              <option value="es">ES</option>
+            </select>
+          </div>
 
           <div style={menuTitle}>MENU</div>
 
@@ -218,34 +281,11 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           <button style={page === "balances" ? btnActive : btn} onClick={() => setPage("balances")}>
             Saldos
           </button>
-
-          <div style={{ height: 18 }} />
-
-          <div style={menuTitle}>IDIOMA</div>
-          <select
-            value={lang}
-            onChange={(e) => setLang(e.target.value as Lang)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: "#fff",
-              color: "#111",
-              border: "0",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            <option value="pt">PT</option>
-            <option value="en">EN</option>
-            <option value="es">ES</option>
-          </select>
-
-          <div style={{ marginTop: 10, opacity: 0.6, fontSize: 12 }}>Selecionado: {langLabel}</div>
         </aside>
 
         <main style={contentWrap}>
           <div style={topbar}>
+            <div style={{ opacity: 0.7, fontWeight: 800 }}>AdminRewards • {langLabel}</div>
             <button style={logoutBtn} onClick={() => signOut?.()}>
               Sair
             </button>
@@ -262,5 +302,9 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 }
 
 export default function App() {
-  return <Authenticator>{({ signOut }) => <AppShell signOut={signOut} />}</Authenticator>;
+  return (
+    <Authenticator>
+      {({ signOut }) => <AppShell signOut={signOut} />}
+    </Authenticator>
+  );
 }
