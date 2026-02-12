@@ -214,7 +214,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           </div>
         </div>
 
-        <RewardsUser lang={lang} />
+        <RewardsUser lang={langLabel} />
       </div>
     );
   }

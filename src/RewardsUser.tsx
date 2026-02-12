@@ -1,502 +1,437 @@
-import { useEffect, useMemo, useState } from "react";
-import { gqlClient } from "./lib/amplifyClient";
-import { MONGO_REWARDS_LIST } from "./lib/rewards.gql";
+import React, { useEffect, useMemo, useState } from "react";
+import { generateClient } from "aws-amplify/api";
+import { getCurrentUser, fetchUserAttributes } from "aws-amplify/auth";
 
-type Lang = "pt" | "en" | "es";
+type Lang = "PT" | "EN" | "ES";
+
+type Reward = {
+  id: string;
+  code?: string | null;
+  title?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  pointsCost: number;
+  active: boolean;
+  deliveryType?: "EMAIL" | "LOCAL" | "OTHER" | null;
+  category?: string | null;
+  tags?: string[] | null;
+};
 
 type Props = {
   lang: Lang;
 };
 
-type MongoI18n = {
-  pt?: string | null;
-  en?: string | null;
-  es?: string | null;
+const client = generateClient();
+
+// ✅ ajuste aqui se o seu schema tiver outro nome
+const LIST_REWARDS = /* GraphQL */ `
+  query ListRewards {
+    listRewards {
+      items {
+        id
+        code
+        title
+        description
+        imageUrl
+        pointsCost
+        active
+        deliveryType
+        category
+        tags
+      }
+    }
+  }
+`;
+
+// ====== UI helpers ======
+const page: React.CSSProperties = {
+  background: "#F6F7F9",
+  minHeight: "100vh",
 };
 
-type DeliveryType = "EMAIL" | "PICKUP" | "SHIPPING";
-
-type MongoReward = {
-  id: string;
-  code: string;
-  title: MongoI18n;
-  description?: MongoI18n | null;
-  category?: string | null;
-  tags?: string[] | null;
-  pointsCost: number;
-  imageUrl?: string | null;
-  deliveryType: DeliveryType;
-  active: boolean;
-  offerStartAt?: string | null;
-  offerEndAt?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-  createdBy?: string | null;
+const container: React.CSSProperties = {
+  maxWidth: 1200,
+  margin: "0 auto",
+  padding: 14,
 };
 
-type MongoRewardsListResponse = {
-  mongoRewardsList?: {
-    items: MongoReward[];
-    nextToken?: string | null;
-  } | null;
+const card: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid rgba(0,0,0,0.08)",
+  borderRadius: 14,
+  padding: 14,
+  boxShadow: "0 1px 0 rgba(0,0,0,0.03)",
 };
 
-function pickErr(e: any) {
-  return (
-    e?.errors?.[0]?.message ||
-    e?.message ||
-    (typeof e === "string" ? e : JSON.stringify(e, null, 2))
-  );
+const grid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+  gap: 14,
+};
+
+const row: React.CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" };
+
+const input: React.CSSProperties = {
+  height: 38,
+  borderRadius: 10,
+  border: "1px solid rgba(0,0,0,0.14)",
+  padding: "0 10px",
+  outline: "none",
+  background: "#fff",
+  minWidth: 120,
+};
+
+const pill: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "rgba(0,0,0,0.05)",
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#111827",
+};
+
+const okPill: React.CSSProperties = {
+  ...pill,
+  background: "rgba(34,197,94,0.16)",
+  color: "#0F5132",
+};
+
+const redeemBtn: React.CSSProperties = {
+  height: 40,
+  borderRadius: 999,
+  border: 0,
+  padding: "0 14px",
+  cursor: "pointer",
+  fontWeight: 900,
+  background: "#6b5a2b",
+  color: "#fff",
+  width: "100%",
+};
+
+const redeemBtnDisabled: React.CSSProperties = {
+  ...redeemBtn,
+  background: "rgba(107,90,43,0.35)",
+  cursor: "not-allowed",
+};
+
+function splitTags(v?: string[] | null): string[] {
+  return (v || [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
 }
 
-function t(lang: Lang) {
-  const dict = {
-    pt: {
-      title: "Rewards",
-      subtitle: "Escolha um reward para resgatar",
-      onlyActive: "Somente ativos",
-      perPage: "Itens por página",
-      loadMore: "Carregar mais",
-      loading: "Carregando...",
-      empty: "Nenhum reward encontrado.",
-      points: "Pontos",
-      delivery: "Entrega",
-      category: "Categoria",
-      tags: "Tags",
-      statusActive: "Ativo",
-      statusInactive: "Inativo",
-      period: "Período",
-      from: "De",
-      to: "Até",
-      all: "Todos",
-      email: "Email",
-      pickup: "Retirada",
-      shipping: "Entrega",
-    },
-    en: {
-      title: "Rewards",
-      subtitle: "Choose a reward to redeem",
-      onlyActive: "Active only",
-      perPage: "Items per page",
-      loadMore: "Load more",
-      loading: "Loading...",
-      empty: "No rewards found.",
-      points: "Points",
-      delivery: "Delivery",
-      category: "Category",
-      tags: "Tags",
-      statusActive: "Active",
-      statusInactive: "Inactive",
-      period: "Period",
-      from: "From",
-      to: "To",
-      all: "All",
-      email: "Email",
-      pickup: "Pickup",
-      shipping: "Shipping",
-    },
-    es: {
-      title: "Recompensas",
-      subtitle: "Elige una recompensa para canjear",
-      onlyActive: "Solo activas",
-      perPage: "Ítems por página",
-      loadMore: "Cargar más",
-      loading: "Cargando...",
-      empty: "No se encontraron recompensas.",
-      points: "Puntos",
-      delivery: "Entrega",
-      category: "Categoría",
-      tags: "Etiquetas",
-      statusActive: "Activa",
-      statusInactive: "Inactiva",
-      period: "Período",
-      from: "Desde",
-      to: "Hasta",
-      all: "Todas",
-      email: "Email",
-      pickup: "Retiro",
-      shipping: "Envío",
-    },
-  } as const;
-
-  return dict[lang];
+function parseTags(text: string): string[] {
+  return text
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
 }
 
-function getI18nText(v: MongoI18n | null | undefined, lang: Lang) {
-  if (!v) return "";
-  const fallback = v.en || v.pt || v.es || "";
-  const byLang = v[lang] || "";
-  return byLang || fallback;
-}
-
-function fmtDelivery(dt: DeliveryType, lang: Lang) {
-  const L = t(lang);
-  if (dt === "EMAIL") return L.email;
-  if (dt === "PICKUP") return L.pickup;
-  return L.shipping;
-}
-
-function fmtDate(s?: string | null) {
-  if (!s) return "";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return String(s);
-  return d.toLocaleDateString();
-}
-
-function isoDateOnly(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function fmtDelivery(x?: Reward["deliveryType"]) {
+  if (!x) return "—";
+  if (x === "EMAIL") return "Email";
+  if (x === "LOCAL") return "Local";
+  return "Entrega";
 }
 
 export default function RewardsUser({ lang }: Props) {
-  const L = useMemo(() => t(lang), [lang]);
+  const [fullName, setFullName] = useState<string>("");
 
-  const [items, setItems] = useState<MongoReward[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  // ✅ depois você liga isso no saldo real do cliente (DB)
+  const [pointsBalance, setPointsBalance] = useState<number>(0);
+
+  const [loading, setLoading] = useState(true);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   // filtros
-  const [activeOnly, setActiveOnly] = useState(true);
-  const [limit, setLimit] = useState<number>(10);
+  const [q, setQ] = useState("");
+  const [minPts, setMinPts] = useState<string>("");
+  const [maxPts, setMaxPts] = useState<string>("");
+  const [tagsText, setTagsText] = useState<string>("");
 
-  // filtro de período (cliente-side; não filtra no Mongo agora)
-  const defaultFrom = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 90);
-    return isoDateOnly(d);
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const u = await getCurrentUser();
+        const attrs = await fetchUserAttributes();
+
+        const name =
+          (attrs.name || attrs.given_name || attrs.family_name || attrs.email || u.username || "")
+            .toString()
+            .trim();
+
+        setFullName(name);
+
+        // ✅ opcional: se você guardar pontos no atributo custom (ex: custom:points)
+        // const pts = Number(attrs["custom:points"] || 0);
+        // setPointsBalance(Number.isFinite(pts) ? pts : 0);
+      } catch {
+        // ok
+      }
+    }
+
+    loadUser();
   }, []);
-  const defaultTo = useMemo(() => isoDateOnly(new Date()), []);
-  const [fromDate, setFromDate] = useState(defaultFrom);
-  const [toDate, setToDate] = useState(defaultTo);
 
-  // paginação cursor (Mongo)
-  const [nextToken, setNextToken] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-
-  async function load(reset = false) {
+  async function loadRewards() {
     setLoading(true);
-    setError("");
+    setError(null);
     try {
-      const res: any = await gqlClient.graphql({
-        query: MONGO_REWARDS_LIST,
-        variables: {
-          limit,
-          nextToken: reset ? null : nextToken,
-          activeOnly,
-        },
-      });
-
-      const data: MongoRewardsListResponse = res?.data || {};
-      const page = data?.mongoRewardsList;
-      const newItems = (page?.items || []).filter(Boolean);
-      const nt = page?.nextToken ?? null;
-
-      setNextToken(nt);
-      setHasMore(!!nt);
-
-      setItems((prev) => (reset ? newItems : [...prev, ...newItems]));
+      const res: any = await client.graphql({ query: LIST_REWARDS });
+      const items: Reward[] = res?.data?.listRewards?.items || [];
+      // portal do user: mostra só ativos
+      setRewards(items.filter((r) => r?.active));
     } catch (e: any) {
-      setError(pickErr(e));
+      setError(e?.message || "Erro ao carregar rewards.");
     } finally {
       setLoading(false);
     }
   }
 
-  function applyFilters() {
-    // reset list/cursor
-    setItems([]);
-    setNextToken(null);
-    setHasMore(false);
-    load(true);
-  }
-
-  // aplica filtros de período localmente (como createdAt vem ISO)
-  const filteredByDate = useMemo(() => {
-    const fromIso = `${fromDate}T00:00:00.000Z`;
-    const toIso = `${toDate}T23:59:59.999Z`;
-    return items.filter((r) => {
-      const c = r.createdAt || "";
-      if (!c) return true;
-      return c >= fromIso && c <= toIso;
-    });
-  }, [items, fromDate, toDate]);
-
   useEffect(() => {
-    // load inicial
-    applyFilters();
+    loadRewards();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const styles: Record<string, React.CSSProperties> = {
-    page: {
-      background: "#F6F7F9",
-      borderRadius: 14,
-      padding: 18,
-      border: "1px solid rgba(0,0,0,0.06)",
-      width: "100%",
-      maxWidth: "100%",
-      boxSizing: "border-box",
-    },
-    headerRow: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 12,
-      flexWrap: "wrap",
-      marginBottom: 12,
-    },
-    titleWrap: { display: "flex", flexDirection: "column", gap: 4 },
-    title: { margin: 0, fontSize: 20, fontWeight: 800, color: "#111827" },
-    subtle: { color: "rgba(17,24,39,0.65)", fontSize: 13, margin: 0 },
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    const tags = parseTags(tagsText).map((t) => t.toLowerCase());
 
-    filterRow: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-      gap: 10,
-      alignItems: "end",
-      width: "100%",
-      marginBottom: 12,
-    },
-    label: { fontSize: 12, color: "rgba(17,24,39,0.7)", marginBottom: 6 },
-    input: {
-      width: "100%",
-      padding: 10,
-      borderRadius: 10,
-      border: "1px solid rgba(0,0,0,0.14)",
-      outline: "none",
-      background: "white",
-      boxSizing: "border-box",
-    },
-    checkboxRow: { display: "flex", gap: 10, alignItems: "center", paddingBottom: 2 },
+    const min = minPts.trim() === "" ? null : Number(minPts);
+    const max = maxPts.trim() === "" ? null : Number(maxPts);
 
-    btn: {
-      background: "#7A5A3A",
-      color: "white",
-      border: "none",
-      padding: "10px 14px",
-      borderRadius: 999,
-      cursor: "pointer",
-      fontWeight: 800,
-      width: "100%",
-      boxSizing: "border-box",
-    },
-    btnGhost: {
-      background: "white",
-      color: "#111827",
-      border: "1px solid rgba(0,0,0,0.14)",
-      padding: "10px 14px",
-      borderRadius: 999,
-      cursor: "pointer",
-      fontWeight: 800,
-      width: "100%",
-      boxSizing: "border-box",
-    },
+    return rewards.filter((r) => {
+      const title = (r.title || "").toLowerCase();
+      const desc = (r.description || "").toLowerCase();
+      const code = (r.code || "").toLowerCase();
 
-    error: {
-      background: "#FFECEC",
-      color: "#7F1D1D",
-      border: "1px solid rgba(127,29,29,0.25)",
-      padding: 12,
-      borderRadius: 10,
-      marginBottom: 12,
-      whiteSpace: "pre-wrap",
-    },
+      if (query) {
+        const hit = title.includes(query) || desc.includes(query) || code.includes(query);
+        if (!hit) return false;
+      }
 
-    cards: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-      gap: 12,
-      width: "100%",
-    },
-    card: {
-      background: "white",
-      borderRadius: 14,
-      border: "1px solid rgba(0,0,0,0.08)",
-      padding: 12,
-      boxSizing: "border-box",
-      display: "flex",
-      flexDirection: "column",
-      gap: 10,
-      minHeight: 180,
-    },
-    cardTop: { display: "flex", gap: 10, alignItems: "flex-start" },
-    img: {
-      width: 64,
-      height: 64,
-      borderRadius: 12,
-      objectFit: "cover",
-      background: "#F3F4F6",
-      border: "1px solid rgba(0,0,0,0.06)",
-      flex: "0 0 auto",
-    },
-    h3: { margin: 0, fontSize: 16, fontWeight: 900, color: "#111827", lineHeight: 1.1 },
-    desc: { margin: 0, color: "rgba(17,24,39,0.75)", fontSize: 13, lineHeight: 1.35 },
-    meta: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
-    badge: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 6,
-      padding: "4px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 800,
-      background: "#F3F4F6",
-      color: "#374151",
-    },
-    badgeActive: { background: "#DCFCE7", color: "#166534" },
-    badgeInactive: { background: "#FEE2E2", color: "#7F1D1D" },
+      if (min !== null && Number.isFinite(min) && r.pointsCost < min) return false;
+      if (max !== null && Number.isFinite(max) && r.pointsCost > max) return false;
 
-    footerRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: 12,
-      marginTop: 12,
-      flexWrap: "wrap",
-    },
-    small: { fontSize: 12, color: "rgba(17,24,39,0.65)" },
-  };
+      if (tags.length) {
+        const rtags = splitTags(r.tags).map((t) => t.toLowerCase());
+        const hasAll = tags.every((t) => rtags.includes(t));
+        if (!hasAll) return false;
+      }
+
+      return true;
+    });
+  }, [rewards, q, minPts, maxPts, tagsText]);
+
+  async function handleRedeem(reward: Reward) {
+    // ✅ placeholder: aqui vamos ligar no backend (mutation / lambda / API)
+    // ideia: createRedemption({ rewardId, userSub/email, pointsCost, status: "PENDING" })
+    alert(`Resgate solicitado: ${reward.title || reward.code || reward.id} (${reward.pointsCost} pts)`);
+  }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.headerRow}>
-        <div style={styles.titleWrap}>
-          <h2 style={styles.title}>{L.title}</h2>
-          <p style={styles.subtle}>{L.subtitle}</p>
-        </div>
-      </div>
-
-      <div style={styles.filterRow}>
-        <label>
-          <div style={styles.label}>{L.from}</div>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            style={styles.input}
-          />
-        </label>
-
-        <label>
-          <div style={styles.label}>{L.to}</div>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            style={styles.input}
-          />
-        </label>
-
-        <label>
-          <div style={styles.label}>{L.perPage}</div>
-          <select
-            value={String(limit)}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            style={styles.input}
-          >
-            <option value="10">10</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-          </select>
-        </label>
-
-        <label>
-          <div style={styles.label}>{L.onlyActive}</div>
-          <div style={{ ...styles.input, ...styles.checkboxRow }}>
-            <input
-              type="checkbox"
-              checked={activeOnly}
-              onChange={(e) => setActiveOnly(e.target.checked)}
-            />
-            <span style={{ fontSize: 13, color: "#111827", fontWeight: 700 }}>
-              {activeOnly ? L.statusActive : L.all}
-            </span>
+    <div style={page}>
+      <div style={container}>
+        {/* Header Martins claro */}
+        <div
+          style={{
+            ...card,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#111827" }}>
+              Bem-vindo{fullName ? `, ${fullName}` : ""} 👋
+            </div>
+            <div style={{ opacity: 0.75, color: "#111827", marginTop: 2 }}>
+              Escolha um reward para resgatar
+            </div>
           </div>
-        </label>
 
-        <button onClick={applyFilters} style={styles.btn} disabled={loading}>
-          {loading ? L.loading : "Apply"}
-        </button>
-      </div>
-
-      {error && <div style={styles.error}>{error}</div>}
-
-      {filteredByDate.length === 0 ? (
-        <div style={{ padding: 12 }}>
-          {loading ? L.loading : L.empty}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={pill}>
+              Pontos disponíveis: <b>{pointsBalance}</b>
+            </span>
+            <button
+              onClick={loadRewards}
+              style={{
+                height: 38,
+                borderRadius: 999,
+                border: "1px solid rgba(0,0,0,0.14)",
+                background: "#fff",
+                padding: "0 14px",
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              Recarregar
+            </button>
+          </div>
         </div>
-      ) : (
-        <div style={styles.cards}>
-          {filteredByDate.map((r) => {
-            const title = getI18nText(r.title, lang) || r.code;
-            const desc = getI18nText(r.description || null, lang);
 
-            return (
-              <div key={r.id} style={styles.card}>
-                <div style={styles.cardTop}>
-                  {r.imageUrl ? (
-                    <img src={r.imageUrl} alt={title} style={styles.img} />
-                  ) : (
-                    <div style={styles.img} />
-                  )}
+        {/* filtros */}
+        <div style={{ ...card, marginTop: 12 }}>
+          <div style={{ ...row, justifyContent: "space-between" }}>
+            <div style={{ fontWeight: 900, color: "#111827" }}>Filtros</div>
+            <div style={{ opacity: 0.7, fontWeight: 800, color: "#111827" }}>
+              Total: {filtered.length}
+            </div>
+          </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={styles.h3}>{title}</div>
-                    {desc ? <p style={styles.desc}>{desc}</p> : null}
-                    <div style={{ ...styles.small, marginTop: 6 }}>
-                      {r.category ? `${L.category}: ${r.category} • ` : ""}
-                      {r.createdAt ? `${fmtDate(r.createdAt)}` : ""}
+          <div style={{ ...row, marginTop: 10 }}>
+            <input
+              style={{ ...input, flex: 1, minWidth: 220 }}
+              placeholder="Buscar (título, descrição ou código)"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+
+            <input
+              style={input}
+              inputMode="numeric"
+              placeholder="Min pts"
+              value={minPts}
+              onChange={(e) => setMinPts(e.target.value)}
+            />
+
+            <input
+              style={input}
+              inputMode="numeric"
+              placeholder="Max pts"
+              value={maxPts}
+              onChange={(e) => setMaxPts(e.target.value)}
+            />
+
+            <input
+              style={{ ...input, flex: 1, minWidth: 180 }}
+              placeholder="Tags (separadas por vírgula)"
+              value={tagsText}
+              onChange={(e) => setTagsText(e.target.value)}
+            />
+
+            <button
+              onClick={() => {
+                setQ("");
+                setMinPts("");
+                setMaxPts("");
+                setTagsText("");
+              }}
+              style={{
+                height: 38,
+                borderRadius: 999,
+                border: "1px solid rgba(0,0,0,0.14)",
+                background: "#fff",
+                padding: "0 14px",
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+
+        {/* listagem */}
+        <div style={{ marginTop: 12 }}>
+          {error && (
+            <div style={{ ...card, borderColor: "rgba(220,38,38,0.35)", color: "#991B1B" }}>
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div style={{ ...card, color: "#111827", fontWeight: 800 }}>Carregando…</div>
+          ) : (
+            <div style={grid}>
+              {filtered.map((r) => {
+                const canRedeem = pointsBalance >= (r.pointsCost || 0);
+                return (
+                  <div key={r.id} style={card}>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <div
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: 12,
+                          border: "1px solid rgba(0,0,0,0.08)",
+                          background: "rgba(0,0,0,0.03)",
+                          overflow: "hidden",
+                          flex: "0 0 auto",
+                        }}
+                      >
+                        {r.imageUrl ? (
+                          <img
+                            src={r.imageUrl}
+                            alt={r.title || "reward"}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "grid",
+                              placeItems: "center",
+                              fontWeight: 900,
+                              opacity: 0.55,
+                            }}
+                          >
+                            —
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 900, color: "#111827", fontSize: 16 }}>
+                          {r.title || r.code || "Reward"}
+                        </div>
+                        <div style={{ opacity: 0.72, marginTop: 2, color: "#111827", fontSize: 13 }}>
+                          {r.description || ""}
+                        </div>
+
+                        <div style={{ ...row, marginTop: 8 }}>
+                          <span style={pill}>Pontos: {r.pointsCost}</span>
+                          <span style={pill}>Entrega: {fmtDelivery(r.deliveryType)}</span>
+                          <span style={okPill}>Ativo</span>
+                        </div>
+
+                        {!!r.category && (
+                          <div style={{ opacity: 0.7, marginTop: 8, color: "#111827", fontSize: 12 }}>
+                            Categoria: <b>{r.category}</b>
+                          </div>
+                        )}
+
+                        {!!splitTags(r.tags).length && (
+                          <div style={{ opacity: 0.7, marginTop: 4, color: "#111827", fontSize: 12 }}>
+                            Tags: {splitTags(r.tags).join(", ")}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <button
+                        style={canRedeem ? redeemBtn : redeemBtnDisabled}
+                        disabled={!canRedeem}
+                        onClick={() => handleRedeem(r)}
+                      >
+                        {canRedeem ? "Resgatar" : "Pontos insuficientes"}
+                      </button>
                     </div>
                   </div>
-                </div>
-
-                <div style={styles.meta}>
-                  <span style={styles.badge}>
-                    {L.points}: {r.pointsCost}
-                  </span>
-                  <span style={styles.badge}>
-                    {L.delivery}: {fmtDelivery(r.deliveryType, lang)}
-                  </span>
-
-                  <span
-                    style={{
-                      ...styles.badge,
-                      ...(r.active ? styles.badgeActive : styles.badgeInactive),
-                    }}
-                  >
-                    {r.active ? L.statusActive : L.statusInactive}
-                  </span>
-                </div>
-
-                {Array.isArray(r.tags) && r.tags.length > 0 ? (
-                  <div style={{ ...styles.small }}>
-                    {L.tags}: {r.tags.join(", ")}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
-
-      <div style={styles.footerRow}>
-        <div style={styles.small}>
-          Showing: <b>{filteredByDate.length}</b>
-        </div>
-
-        {hasMore ? (
-          <button
-            onClick={() => load(false)}
-            style={{ ...styles.btnGhost, width: 220 }}
-            disabled={loading}
-          >
-            {loading ? L.loading : L.loadMore}
-          </button>
-        ) : (
-          <div style={styles.small} />
-        )}
       </div>
     </div>
   );
