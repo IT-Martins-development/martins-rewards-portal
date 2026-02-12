@@ -1,45 +1,74 @@
-import { useEffect, useMemo, useState } from "react";
-import { gqlClient } from "./lib/amplifyClient";
-import { MONGO_REWARDS_LIST } from "./lib/rewards.gql";
+import React, { useEffect, useMemo, useState } from "react";
+import { getCurrentUser, fetchUserAttributes } from "aws-amplify/auth";
+import { gqlClient } from "./amplifyClient";
 
-type Lang = "pt" | "en" | "es";
+type Tier = "SILVER" | "GOLD" | "BLACK" | "PLATINUM" | "NONE";
 
-type Props = {
-  lang: Lang;
-};
-
-type MongoI18n = {
-  pt?: string | null;
-  en?: string | null;
-  es?: string | null;
-};
-
-type DeliveryType = "EMAIL" | "PICKUP" | "SHIPPING";
-
-type MongoReward = {
+type Reward = {
   id: string;
-  code: string;
-  title: MongoI18n;
-  description?: MongoI18n | null;
+  code?: string | null;
+  title?: { pt?: string | null; en?: string | null; es?: string | null } | null;
+  description?: { pt?: string | null; en?: string | null; es?: string | null } | null;
   category?: string | null;
   tags?: string[] | null;
   pointsCost: number;
   imageUrl?: string | null;
-  deliveryType: DeliveryType;
-  active: boolean;
-  offerStartAt?: string | null;
-  offerEndAt?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-  createdBy?: string | null;
+  deliveryType?: string | null;
+  active?: boolean | null;
 };
 
-type MongoRewardsListResponse = {
-  mongoRewardsList?: {
-    items: MongoReward[];
-    nextToken?: string | null;
-  } | null;
+type BalanceRow = {
+  userId: string;
+  userName?: string | null;
+  userType?: string | null;
+  userEmail?: string | null;
+  userPhone?: string | null;
+  availablePoints: number;
+  redeemedPoints: number;
+  updatedAt?: string | null;
 };
+
+type Props = {
+  lang?: "PT" | "EN" | "ES";
+};
+
+const LIST_REWARDS = /* GraphQL */ `
+  query MongoRewardsList($limit: Int, $nextToken: String, $activeOnly: Boolean) {
+    mongoRewardsList(limit: $limit, nextToken: $nextToken, activeOnly: $activeOnly) {
+      items {
+        id
+        code
+        title { pt en es }
+        description { pt en es }
+        category
+        tags
+        pointsCost
+        imageUrl
+        deliveryType
+        active
+      }
+      nextToken
+    }
+  }
+`;
+
+const LIST_BALANCES = /* GraphQL */ `
+  query MongoRewardsBalancesList($limit: Int, $nextToken: String, $name: String, $userType: String) {
+    mongoRewardsBalancesList(limit: $limit, nextToken: $nextToken, name: $name, userType: $userType) {
+      items {
+        userId
+        userName
+        userType
+        userEmail
+        userPhone
+        availablePoints
+        redeemedPoints
+        updatedAt
+      }
+      nextToken
+    }
+  }
+`;
 
 function pickErr(e: any) {
   return (
@@ -49,154 +78,225 @@ function pickErr(e: any) {
   );
 }
 
-function t(lang: Lang) {
+function fmtPts(n: any) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "0";
+  return String(Math.trunc(v));
+}
+
+function computeTier(points: number): Tier {
+  const p = Math.max(0, Number(points) || 0);
+  if (p >= 5000) return "PLATINUM";
+  if (p >= 2000) return "BLACK";
+  if (p >= 1000) return "GOLD";
+  if (p >= 1) return "SILVER";
+  return "NONE";
+}
+
+function tierStyle(tier: Tier): React.CSSProperties {
+  const base: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 12px",
+    borderRadius: 999,
+    fontWeight: 900,
+    fontSize: 12,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+    border: "1px solid rgba(0,0,0,0.08)",
+    background: "#fff",
+    color: "#111827",
+    whiteSpace: "nowrap",
+  };
+
+  switch (tier) {
+    case "PLATINUM":
+      return {
+        ...base,
+        background: "#EEF2FF",
+        border: "1px solid rgba(79,70,229,0.25)",
+        color: "#312E81",
+      };
+    case "BLACK":
+      return { ...base, background: "#111827", border: "1px solid rgba(0,0,0,0.5)", color: "#fff" };
+    case "GOLD":
+      return {
+        ...base,
+        background: "#FEF9C3",
+        border: "1px solid rgba(161,98,7,0.25)",
+        color: "#7C2D12",
+      };
+    case "SILVER":
+      return { ...base, background: "#F3F4F6", border: "1px solid rgba(0,0,0,0.10)", color: "#111827" };
+    default:
+      return { ...base, background: "#fff", color: "rgba(17,24,39,0.75)" };
+  }
+}
+
+function t(lang: "PT" | "EN" | "ES") {
   const dict = {
-    pt: {
-      title: "Rewards",
-      subtitle: "Escolha um reward para resgatar",
-      onlyActive: "Somente ativos",
-      perPage: "Itens por página",
-      loadMore: "Carregar mais",
-      loading: "Carregando...",
-      empty: "Nenhum reward encontrado.",
+    PT: {
+      welcome: "Bem-vindo",
       points: "Pontos",
-      delivery: "Entrega",
-      category: "Categoria",
+      tier: "Nível",
+      loading: "Carregando...",
+      empty: "Nenhum reward disponível no momento.",
+      filters: "Filtros",
+      minPts: "Pontos (mín)",
+      maxPts: "Pontos (máx)",
       tags: "Tags",
-      statusActive: "Ativo",
-      statusInactive: "Inativo",
-      period: "Período",
-      from: "De",
-      to: "Até",
-      all: "Todos",
-      email: "Email",
-      pickup: "Retirada",
-      shipping: "Entrega",
+      tagsHint: "Ex: giftcard, viagem",
+      clear: "Limpar",
+      apply: "Aplicar",
+      redeem: "Resgatar",
+      needPoints: "Pontos insuficientes",
+      yourBalance: "Seu saldo",
+      refresh: "Atualizar",
     },
-    en: {
-      title: "Rewards",
-      subtitle: "Choose a reward to redeem",
-      onlyActive: "Active only",
-      perPage: "Items per page",
-      loadMore: "Load more",
-      loading: "Loading...",
-      empty: "No rewards found.",
+    EN: {
+      welcome: "Welcome",
       points: "Points",
-      delivery: "Delivery",
-      category: "Category",
+      tier: "Tier",
+      loading: "Loading...",
+      empty: "No rewards available right now.",
+      filters: "Filters",
+      minPts: "Min points",
+      maxPts: "Max points",
       tags: "Tags",
-      statusActive: "Active",
-      statusInactive: "Inactive",
-      period: "Period",
-      from: "From",
-      to: "To",
-      all: "All",
-      email: "Email",
-      pickup: "Pickup",
-      shipping: "Shipping",
+      tagsHint: "e.g. giftcard, travel",
+      clear: "Clear",
+      apply: "Apply",
+      redeem: "Redeem",
+      needPoints: "Not enough points",
+      yourBalance: "Your balance",
+      refresh: "Refresh",
     },
-    es: {
-      title: "Recompensas",
-      subtitle: "Elige una recompensa para canjear",
-      onlyActive: "Solo activas",
-      perPage: "Ítems por página",
-      loadMore: "Cargar más",
-      loading: "Cargando...",
-      empty: "No se encontraron recompensas.",
+    ES: {
+      welcome: "Bienvenido",
       points: "Puntos",
-      delivery: "Entrega",
-      category: "Categoría",
+      tier: "Nivel",
+      loading: "Cargando...",
+      empty: "No hay rewards disponibles ahora.",
+      filters: "Filtros",
+      minPts: "Puntos (mín)",
+      maxPts: "Puntos (máx)",
       tags: "Etiquetas",
-      statusActive: "Activa",
-      statusInactive: "Inactiva",
-      period: "Período",
-      from: "Desde",
-      to: "Hasta",
-      all: "Todas",
-      email: "Email",
-      pickup: "Retiro",
-      shipping: "Envío",
+      tagsHint: "Ej: giftcard, viaje",
+      clear: "Limpiar",
+      apply: "Aplicar",
+      redeem: "Canjear",
+      needPoints: "Puntos insuficientes",
+      yourBalance: "Tu saldo",
+      refresh: "Actualizar",
     },
   } as const;
 
   return dict[lang];
 }
 
-function getI18nText(v: MongoI18n | null | undefined, lang: Lang) {
-  if (!v) return "";
-  const fallback = v.en || v.pt || v.es || "";
-  const byLang = v[lang] || "";
-  return byLang || fallback;
-}
-
-function fmtDelivery(dt: DeliveryType, lang: Lang) {
-  const L = t(lang);
-  if (dt === "EMAIL") return L.email;
-  if (dt === "PICKUP") return L.pickup;
-  return L.shipping;
-}
-
-function fmtDate(s?: string | null) {
-  if (!s) return "";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return String(s);
-  return d.toLocaleDateString();
-}
-
-function isoDateOnly(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function pickI18n(i18n: any, lang: "PT" | "EN" | "ES") {
+  if (!i18n) return "";
+  if (lang === "PT") return i18n.pt || i18n.en || i18n.es || "";
+  if (lang === "ES") return i18n.es || i18n.en || i18n.pt || "";
+  return i18n.en || i18n.pt || i18n.es || "";
 }
 
 export default function RewardsUser({ lang }: Props) {
-  const L = useMemo(() => t(lang), [lang]);
+  const safeLang: "PT" | "EN" | "ES" = lang === "PT" || lang === "EN" || lang === "ES" ? lang : "EN";
+  const L = useMemo(() => t(safeLang), [safeLang]);
 
-  const [items, setItems] = useState<MongoReward[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // filtros
-  const [activeOnly, setActiveOnly] = useState(true);
-  const [limit, setLimit] = useState<number>(10);
+  const [userSub, setUserSub] = useState<string>("");
+  const [fullName, setFullName] = useState<string>("");
+  const [balance, setBalance] = useState<BalanceRow | null>(null);
 
-  // filtro de período (cliente-side; não filtra no Mongo agora)
-  const defaultFrom = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 90);
-    return isoDateOnly(d);
-  }, []);
-  const defaultTo = useMemo(() => isoDateOnly(new Date()), []);
-  const [fromDate, setFromDate] = useState(defaultFrom);
-  const [toDate, setToDate] = useState(defaultTo);
+  const [rewards, setRewards] = useState<Reward[]>([]);
 
-  // paginação cursor (Mongo)
-  const [nextToken, setNextToken] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  // filters
+  const [minPts, setMinPts] = useState<string>("");
+  const [maxPts, setMaxPts] = useState<string>("");
+  const [tagsText, setTagsText] = useState<string>("");
 
-  async function load(reset = false) {
+  async function load() {
     setLoading(true);
     setError("");
+
     try {
-      const res: any = await gqlClient.graphql({
-        query: MONGO_REWARDS_LIST,
-        variables: {
-          limit,
-          nextToken: reset ? null : nextToken,
-          activeOnly,
-        },
-      });
+      // current user
+      const u = await getCurrentUser();
+      const sub = String((u as any)?.userId || (u as any)?.username || "").trim();
+      setUserSub(sub);
 
-      const data: MongoRewardsListResponse = res?.data || {};
-      const page = data?.mongoRewardsList;
-      const newItems = (page?.items || []).filter(Boolean);
-      const nt = page?.nextToken ?? null;
+      // name (prefer Cognito attributes, fallback to balance userName)
+      try {
+        const attrs = await fetchUserAttributes();
+        const name =
+          (attrs as any)?.name ||
+          (attrs as any)?.["custom:fullName"] ||
+          [String((attrs as any)?.given_name || "").trim(), String((attrs as any)?.family_name || "").trim()]
+            .filter(Boolean)
+            .join(" ");
+        if (name) setFullName(String(name));
+      } catch {
+        // ignore
+      }
 
-      setNextToken(nt);
-      setHasMore(!!nt);
+      // rewards list (Mongo)
+      {
+        let nextToken: string | null | undefined = null;
+        const all: Reward[] = [];
+        const PAGE_SIZE = 200;
+        const MAX_ITEMS = 2000;
 
-      setItems((prev) => (reset ? newItems : [...prev, ...newItems]));
+        do {
+          const res: any = await gqlClient.graphql({
+            query: LIST_REWARDS,
+            variables: { limit: PAGE_SIZE, nextToken, activeOnly: true },
+          });
+
+          const block = res?.data?.mongoRewardsList;
+          const list: Reward[] = block?.items ?? [];
+          all.push(...list.filter(Boolean));
+          nextToken = block?.nextToken ?? null;
+        } while (nextToken && all.length < MAX_ITEMS);
+
+        // sort by pointsCost asc
+        all.sort((a, b) => (a.pointsCost || 0) - (b.pointsCost || 0));
+        setRewards(all);
+      }
+
+      // balance (Mongo) — same paging strategy as admin balances report
+      {
+        let nextToken: string | null | undefined = null;
+        let found: BalanceRow | null = null;
+
+        const PAGE_SIZE = 200;
+        const MAX_PAGES = 40; // safety
+
+        let pages = 0;
+        do {
+          const res: any = await gqlClient.graphql({
+            query: LIST_BALANCES,
+            variables: { limit: PAGE_SIZE, nextToken, name: null, userType: null },
+          });
+
+          const block = res?.data?.mongoRewardsBalancesList;
+          const list: BalanceRow[] = block?.items ?? [];
+
+          found = list.find((r) => String(r?.userId || "").trim() === sub) || null;
+
+          nextToken = block?.nextToken ?? null;
+          pages += 1;
+        } while (!found && nextToken && pages < MAX_PAGES);
+
+        setBalance(found);
+
+        // fallback name if still empty
+        if (!fullName && found?.userName) setFullName(String(found.userName));
+      }
     } catch (e: any) {
       setError(pickErr(e));
     } finally {
@@ -204,96 +304,135 @@ export default function RewardsUser({ lang }: Props) {
     }
   }
 
-  function applyFilters() {
-    // reset list/cursor
-    setItems([]);
-    setNextToken(null);
-    setHasMore(false);
-    load(true);
-  }
-
-  // aplica filtros de período localmente (como createdAt vem ISO)
-  const filteredByDate = useMemo(() => {
-    const fromIso = `${fromDate}T00:00:00.000Z`;
-    const toIso = `${toDate}T23:59:59.999Z`;
-    return items.filter((r) => {
-      const c = r.createdAt || "";
-      if (!c) return true;
-      return c >= fromIso && c <= toIso;
-    });
-  }, [items, fromDate, toDate]);
-
   useEffect(() => {
-    // load inicial
-    applyFilters();
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const styles: Record<string, React.CSSProperties> = {
+  const availablePoints = useMemo(() => {
+    const v = Number(balance?.availablePoints);
+    return Number.isFinite(v) ? v : 0;
+  }, [balance]);
+
+  const tier = useMemo(() => computeTier(availablePoints), [availablePoints]);
+
+  const tagsFilter = useMemo(() => {
+    return tagsText
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+  }, [tagsText]);
+
+  const filteredRewards = useMemo(() => {
+    const min = minPts.trim() ? Number(minPts) : null;
+    const max = maxPts.trim() ? Number(maxPts) : null;
+
+    return rewards.filter((r) => {
+      const cost = Number(r.pointsCost || 0);
+
+      const okMin = min == null || (Number.isFinite(min) && cost >= min);
+      const okMax = max == null || (Number.isFinite(max) && cost <= max);
+
+      const rt = (r.tags || []).map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+      const okTags = tagsFilter.length === 0 || tagsFilter.some((t) => rt.includes(t));
+
+      return okMin && okMax && okTags;
+    });
+  }, [rewards, minPts, maxPts, tagsFilter]);
+
+  function clearFilters() {
+    setMinPts("");
+    setMaxPts("");
+    setTagsText("");
+  }
+
+  // NOTE: Redeem flow needs backend mutation to create a redemption request in Mongo.
+  function handleRedeem(_r: Reward) {
+    alert("Resgate ainda não habilitado no backend (pendente criar mutation no Mongo).");
+  }
+
+  const isNarrow = useMemo(() => window.innerWidth < 900, []);
+
+  const S: Record<string, React.CSSProperties> = {
     page: {
       background: "#F6F7F9",
-      borderRadius: 14,
-      padding: 18,
-      border: "1px solid rgba(0,0,0,0.06)",
-      width: "100%",
-      maxWidth: "100%",
-      boxSizing: "border-box",
+      padding: 16,
+      minHeight: "calc(100vh - 56px)",
     },
-    headerRow: {
+    container: {
+      maxWidth: 1200,
+      margin: "0 auto",
+    },
+    headerCard: {
+      background: "white",
+      border: "1px solid rgba(0,0,0,0.08)",
+      borderRadius: 14,
+      padding: 16,
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
       flexWrap: "wrap",
-      marginBottom: 12,
+      marginBottom: 14,
     },
-    titleWrap: { display: "flex", flexDirection: "column", gap: 4 },
-    title: { margin: 0, fontSize: 20, fontWeight: 800, color: "#111827" },
-    subtle: { color: "rgba(17,24,39,0.65)", fontSize: 13, margin: 0 },
-
-    filterRow: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-      gap: 10,
-      alignItems: "end",
-      width: "100%",
-      marginBottom: 12,
+    hLeft: { display: "flex", flexDirection: "column", gap: 6 },
+    hTitle: { margin: 0, fontSize: 18, fontWeight: 900, color: "#111827" },
+    hSub: { fontSize: 13, color: "rgba(17,24,39,0.75)", fontWeight: 700 },
+    hRight: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
+    pointsCard: {
+      background: "#fff",
+      border: "1px solid rgba(0,0,0,0.08)",
+      borderRadius: 14,
+      padding: "10px 12px",
+      minWidth: 180,
     },
-    label: { fontSize: 12, color: "rgba(17,24,39,0.7)", marginBottom: 6 },
-    input: {
-      width: "100%",
-      padding: 10,
-      borderRadius: 10,
-      border: "1px solid rgba(0,0,0,0.14)",
-      outline: "none",
-      background: "white",
-      boxSizing: "border-box",
-    },
-    checkboxRow: { display: "flex", gap: 10, alignItems: "center", paddingBottom: 2 },
-
+    ptsLabel: { fontSize: 12, color: "rgba(17,24,39,0.65)", fontWeight: 900, letterSpacing: 0.4 },
+    ptsValue: { fontSize: 22, color: "#111827", fontWeight: 1000, lineHeight: 1.15, marginTop: 2 },
     btn: {
       background: "#7A5A3A",
       color: "white",
       border: "none",
       padding: "10px 14px",
-      borderRadius: 999,
+      borderRadius: 12,
       cursor: "pointer",
-      fontWeight: 800,
-      width: "100%",
-      boxSizing: "border-box",
+      fontWeight: 900,
+      height: 42,
     },
     btnGhost: {
       background: "white",
-      color: "#111827",
-      border: "1px solid rgba(0,0,0,0.14)",
+      color: "#7A5A3A",
+      border: "1px solid rgba(122,90,58,0.35)",
       padding: "10px 14px",
-      borderRadius: 999,
+      borderRadius: 12,
       cursor: "pointer",
-      fontWeight: 800,
-      width: "100%",
-      boxSizing: "border-box",
+      fontWeight: 900,
+      height: 42,
     },
-
+    grid: {
+      display: "grid",
+      gridTemplateColumns: isNarrow ? "1fr" : "320px 1fr",
+      gap: 14,
+      alignItems: "start",
+    },
+    card: {
+      background: "white",
+      border: "1px solid rgba(0,0,0,0.08)",
+      borderRadius: 14,
+      padding: 14,
+    },
+    cardTitle: { margin: 0, fontSize: 14, fontWeight: 1000, color: "#111827", marginBottom: 10 },
+    label: { fontSize: 12, fontWeight: 900, color: "rgba(17,24,39,0.75)", marginBottom: 6 },
+    input: {
+      width: "100%",
+      height: 42,
+      padding: "0 12px",
+      borderRadius: 12,
+      border: "1px solid rgba(0,0,0,0.14)",
+      outline: "none",
+      backgroundColor: "white",
+      color: "#111827",
+      fontSize: 14,
+    },
     error: {
       background: "#FFECEC",
       color: "#7F1D1D",
@@ -302,201 +441,208 @@ export default function RewardsUser({ lang }: Props) {
       borderRadius: 10,
       marginBottom: 12,
       whiteSpace: "pre-wrap",
+      fontWeight: 700,
     },
-
-    cards: {
+    rewardsGrid: {
       display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+      gridTemplateColumns: isNarrow ? "1fr" : "repeat(3, minmax(0, 1fr))",
       gap: 12,
-      width: "100%",
     },
-    card: {
+    rewardCard: {
       background: "white",
-      borderRadius: 14,
       border: "1px solid rgba(0,0,0,0.08)",
-      padding: 12,
-      boxSizing: "border-box",
+      borderRadius: 14,
+      overflow: "hidden",
       display: "flex",
       flexDirection: "column",
-      gap: 10,
-      minHeight: 180,
+      minHeight: 320,
     },
-    cardTop: { display: "flex", gap: 10, alignItems: "flex-start" },
-    img: {
-      width: 64,
-      height: 64,
-      borderRadius: 12,
-      objectFit: "cover",
-      background: "#F3F4F6",
-      border: "1px solid rgba(0,0,0,0.06)",
-      flex: "0 0 auto",
-    },
-    h3: { margin: 0, fontSize: 16, fontWeight: 900, color: "#111827", lineHeight: 1.1 },
-    desc: { margin: 0, color: "rgba(17,24,39,0.75)", fontSize: 13, lineHeight: 1.35 },
-    meta: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
-    badge: {
+    rewardImg: { width: "100%", height: 160, objectFit: "cover", background: "#F3F4F6" },
+    rewardBody: { padding: 12, display: "flex", flexDirection: "column", gap: 8, flex: 1 },
+    rewardTitle: { fontSize: 14, fontWeight: 1000, color: "#111827" },
+    rewardDesc: { fontSize: 13, color: "rgba(17,24,39,0.75)", lineHeight: 1.35, minHeight: 36 },
+    rewardMeta: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 4 },
+    costPill: {
       display: "inline-flex",
       alignItems: "center",
       gap: 6,
-      padding: "4px 10px",
+      padding: "6px 10px",
       borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 800,
       background: "#F3F4F6",
-      color: "#374151",
+      color: "#111827",
+      fontWeight: 1000,
+      fontSize: 12,
+      border: "1px solid rgba(0,0,0,0.06)",
+      whiteSpace: "nowrap",
     },
-    badgeActive: { background: "#DCFCE7", color: "#166534" },
-    badgeInactive: { background: "#FEE2E2", color: "#7F1D1D" },
-
-    footerRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: 12,
-      marginTop: 12,
-      flexWrap: "wrap",
+    tagRow: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 },
+    tag: {
+      fontSize: 11,
+      fontWeight: 900,
+      padding: "4px 8px",
+      borderRadius: 999,
+      background: "#FBFBFC",
+      border: "1px solid rgba(0,0,0,0.08)",
+      color: "rgba(17,24,39,0.75)",
     },
-    small: { fontSize: 12, color: "rgba(17,24,39,0.65)" },
+    redeemBtn: {
+      marginTop: 10,
+      width: "100%",
+      borderRadius: 12,
+      padding: "10px 12px",
+      fontWeight: 1000,
+      border: "none",
+      cursor: "pointer",
+      background: "#7A5A3A",
+      color: "white",
+    },
+    redeemBtnDisabled: { opacity: 0.5, cursor: "not-allowed" as const },
   };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.headerRow}>
-        <div style={styles.titleWrap}>
-          <h2 style={styles.title}>{L.title}</h2>
-          <p style={styles.subtle}>{L.subtitle}</p>
-        </div>
-      </div>
+    <div style={S.page}>
+      <div style={S.container}>
+        {error && <div style={S.error}>{error}</div>}
 
-      <div style={styles.filterRow}>
-        <label>
-          <div style={styles.label}>{L.from}</div>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            style={styles.input}
-          />
-        </label>
-
-        <label>
-          <div style={styles.label}>{L.to}</div>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            style={styles.input}
-          />
-        </label>
-
-        <label>
-          <div style={styles.label}>{L.perPage}</div>
-          <select
-            value={String(limit)}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            style={styles.input}
-          >
-            <option value="10">10</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-          </select>
-        </label>
-
-        <label>
-          <div style={styles.label}>{L.onlyActive}</div>
-          <div style={{ ...styles.input, ...styles.checkboxRow }}>
-            <input
-              type="checkbox"
-              checked={activeOnly}
-              onChange={(e) => setActiveOnly(e.target.checked)}
-            />
-            <span style={{ fontSize: 13, color: "#111827", fontWeight: 700 }}>
-              {activeOnly ? L.statusActive : L.all}
-            </span>
+        <div style={S.headerCard}>
+          <div style={S.hLeft}>
+            <h2 style={S.hTitle}>{L.welcome}{fullName ? `, ${fullName}` : ""}!</h2>
+            <div style={S.hSub}>
+              {L.yourBalance}: <b style={{ color: "#111827" }}>{fmtPts(availablePoints)}</b> • {L.tier}: {" "}
+              <span style={tierStyle(tier)}>{tier}</span>
+              {userSub ? (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    fontFamily:
+                      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    color: "rgba(17,24,39,0.55)",
+                  }}
+                >
+                  ({userSub})
+                </span>
+              ) : null}
+            </div>
           </div>
-        </label>
 
-        <button onClick={applyFilters} style={styles.btn} disabled={loading}>
-          {loading ? L.loading : "Apply"}
-        </button>
-      </div>
+          <div style={S.hRight}>
+            <div style={S.pointsCard}>
+              <div style={S.ptsLabel}>{L.points}</div>
+              <div style={S.ptsValue}>{fmtPts(availablePoints)}</div>
+            </div>
 
-      {error && <div style={styles.error}>{error}</div>}
-
-      {filteredByDate.length === 0 ? (
-        <div style={{ padding: 12 }}>
-          {loading ? L.loading : L.empty}
+            <button style={S.btnGhost} onClick={load} disabled={loading}>
+              {loading ? L.loading : L.refresh}
+            </button>
+          </div>
         </div>
-      ) : (
-        <div style={styles.cards}>
-          {filteredByDate.map((r) => {
-            const title = getI18nText(r.title, lang) || r.code;
-            const desc = getI18nText(r.description || null, lang);
 
-            return (
-              <div key={r.id} style={styles.card}>
-                <div style={styles.cardTop}>
-                  {r.imageUrl ? (
-                    <img src={r.imageUrl} alt={title} style={styles.img} />
-                  ) : (
-                    <div style={styles.img} />
-                  )}
+        <div style={S.grid}>
+          <div style={S.card}>
+            <h3 style={S.cardTitle}>{L.filters}</h3>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={styles.h3}>{title}</div>
-                    {desc ? <p style={styles.desc}>{desc}</p> : null}
-                    <div style={{ ...styles.small, marginTop: 6 }}>
-                      {r.category ? `${L.category}: ${r.category} • ` : ""}
-                      {r.createdAt ? `${fmtDate(r.createdAt)}` : ""}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={styles.meta}>
-                  <span style={styles.badge}>
-                    {L.points}: {r.pointsCost}
-                  </span>
-                  <span style={styles.badge}>
-                    {L.delivery}: {fmtDelivery(r.deliveryType, lang)}
-                  </span>
-
-                  <span
-                    style={{
-                      ...styles.badge,
-                      ...(r.active ? styles.badgeActive : styles.badgeInactive),
-                    }}
-                  >
-                    {r.active ? L.statusActive : L.statusInactive}
-                  </span>
-                </div>
-
-                {Array.isArray(r.tags) && r.tags.length > 0 ? (
-                  <div style={{ ...styles.small }}>
-                    {L.tags}: {r.tags.join(", ")}
-                  </div>
-                ) : null}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <div style={S.label}>{L.minPts}</div>
+                <input
+                  type="number"
+                  value={minPts}
+                  onChange={(e) => setMinPts(e.target.value)}
+                  style={S.input}
+                  placeholder="0"
+                  min={0}
+                />
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      <div style={styles.footerRow}>
-        <div style={styles.small}>
-          Showing: <b>{filteredByDate.length}</b>
-        </div>
+              <div>
+                <div style={S.label}>{L.maxPts}</div>
+                <input
+                  type="number"
+                  value={maxPts}
+                  onChange={(e) => setMaxPts(e.target.value)}
+                  style={S.input}
+                  placeholder="2000"
+                  min={0}
+                />
+              </div>
+            </div>
 
-        {hasMore ? (
-          <button
-            onClick={() => load(false)}
-            style={{ ...styles.btnGhost, width: 220 }}
-            disabled={loading}
-          >
-            {loading ? L.loading : L.loadMore}
-          </button>
-        ) : (
-          <div style={styles.small} />
-        )}
+            <div style={{ marginTop: 10 }}>
+              <div style={S.label}>{L.tags}</div>
+              <input
+                value={tagsText}
+                onChange={(e) => setTagsText(e.target.value)}
+                style={S.input}
+                placeholder={L.tagsHint}
+              />
+              <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button style={S.btnGhost} onClick={clearFilters} disabled={loading}>
+                  {L.clear}
+                </button>
+                <button style={S.btn} onClick={() => {}} disabled={loading}>
+                  {L.apply}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            {loading && rewards.length === 0 ? (
+              <div style={{ ...S.card, color: "#111827", fontWeight: 900 }}>{L.loading}</div>
+            ) : filteredRewards.length === 0 ? (
+              <div style={{ ...S.card, color: "#111827", fontWeight: 900 }}>{L.empty}</div>
+            ) : (
+              <div style={S.rewardsGrid}>
+                {filteredRewards.map((r) => {
+                  const title = pickI18n(r.title, safeLang) || r.code || r.id;
+                  const desc = pickI18n(r.description, safeLang);
+                  const cost = Number(r.pointsCost || 0);
+                  const canRedeem = availablePoints >= cost && cost > 0;
+
+                  return (
+                    <div key={r.id} style={S.rewardCard}>
+                      {r.imageUrl ? (
+                        <img src={r.imageUrl} alt={title} style={S.rewardImg} />
+                      ) : (
+                        <div style={S.rewardImg} />
+                      )}
+                      <div style={S.rewardBody}>
+                        <div style={S.rewardTitle}>{title}</div>
+                        <div style={S.rewardDesc}>{desc || ""}</div>
+
+                        <div style={S.tagRow}>
+                          {(r.tags || []).slice(0, 6).map((tg) => (
+                            <span key={tg} style={S.tag}>
+                              {tg}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div style={S.rewardMeta}>
+                          <span style={S.costPill}>
+                            {fmtPts(cost)} {L.points}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 900, color: "rgba(17,24,39,0.7)" }}>
+                            {r.category || ""}
+                          </span>
+                        </div>
+
+                        <button
+                          style={{ ...S.redeemBtn, ...(canRedeem ? {} : S.redeemBtnDisabled) }}
+                          disabled={!canRedeem}
+                          onClick={() => handleRedeem(r)}
+                          title={canRedeem ? "" : L.needPoints}
+                        >
+                          {L.redeem}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
