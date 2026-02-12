@@ -12,7 +12,7 @@ import RewardsCRUD from "./RewardsCrud";
 import RewardsApprovals from "./RewardsApprovals";
 import RewardsReport from "./RewardsReport";
 import RewardsBalancesReport from "./RewardsBalancesReport";
-import RewardsUser from "./RewardsUserPortal";
+import RewardsUserPortal from "./RewardsUserPortal";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
@@ -214,7 +214,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           </div>
         </div>
 
-        <RewardsUser lang={lang} />
+        <RewardsUserPortal lang={lang} />
       </div>
     );
   }
