@@ -1,10 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { gqlClient } from "./amplifyClient";
-import { fetchUserAttributes } from "aws-amplify/auth";
+import { useEffect, useMemo, useState } from "react";
+import { gqlClient } from "./lib/amplifyClient";
+import { MONGO_REWARDS_LIST } from "./lib/rewards.gql";
 
-type Lang = "PT" | "EN" | "ES";
+type Lang = "pt" | "en" | "es";
 
-type MongoI18n = { pt?: string | null; en?: string | null; es?: string | null };
+type Props = {
+  lang: Lang;
+};
+
+type MongoI18n = {
+  pt?: string | null;
+  en?: string | null;
+  es?: string | null;
+};
+
+type DeliveryType = "EMAIL" | "PICKUP" | "SHIPPING";
 
 type MongoReward = {
   id: string;
@@ -15,443 +25,479 @@ type MongoReward = {
   tags?: string[] | null;
   pointsCost: number;
   imageUrl?: string | null;
-  deliveryType?: string | null;
+  deliveryType: DeliveryType;
   active: boolean;
-};
-
-type BalanceRow = {
-  userId: string;
-  userName?: string | null;
-  userEmail?: string | null;
-  userType?: string | null;
-  availablePoints: number;
-  redeemedPoints: number;
+  offerStartAt?: string | null;
+  offerEndAt?: string | null;
+  createdAt?: string | null;
   updatedAt?: string | null;
+  createdBy?: string | null;
 };
 
-const MONGO_REWARDS_LIST = /* GraphQL */ `
-  query MongoRewardsList($limit: Int, $nextToken: String, $activeOnly: Boolean) {
-    mongoRewardsList(limit: $limit, nextToken: $nextToken, activeOnly: $activeOnly) {
-      items {
-        id
-        code
-        title { pt en es }
-        description { pt en es }
-        category
-        tags
-        pointsCost
-        imageUrl
-        deliveryType
-        active
-      }
-      nextToken
-    }
-  }
-`;
+type MongoRewardsListResponse = {
+  mongoRewardsList?: {
+    items: MongoReward[];
+    nextToken?: string | null;
+  } | null;
+};
 
-const MONGO_BALANCES_LIST = /* GraphQL */ `
-  query MongoRewardsBalancesList($limit: Int, $nextToken: String, $name: String, $userType: String) {
-    mongoRewardsBalancesList(limit: $limit, nextToken: $nextToken, name: $name, userType: $userType) {
-      items {
-        userId
-        userName
-        userEmail
-        userType
-        availablePoints
-        redeemedPoints
-        updatedAt
-      }
-      nextToken
-    }
-  }
-`;
+function pickErr(e: any) {
+  return (
+    e?.errors?.[0]?.message ||
+    e?.message ||
+    (typeof e === "string" ? e : JSON.stringify(e, null, 2))
+  );
+}
 
-function pickI18nText(v?: MongoI18n | null, lang?: Lang) {
+function t(lang: Lang) {
+  const dict = {
+    pt: {
+      title: "Rewards",
+      subtitle: "Escolha um reward para resgatar",
+      onlyActive: "Somente ativos",
+      perPage: "Itens por página",
+      loadMore: "Carregar mais",
+      loading: "Carregando...",
+      empty: "Nenhum reward encontrado.",
+      points: "Pontos",
+      delivery: "Entrega",
+      category: "Categoria",
+      tags: "Tags",
+      statusActive: "Ativo",
+      statusInactive: "Inativo",
+      period: "Período",
+      from: "De",
+      to: "Até",
+      all: "Todos",
+      email: "Email",
+      pickup: "Retirada",
+      shipping: "Entrega",
+    },
+    en: {
+      title: "Rewards",
+      subtitle: "Choose a reward to redeem",
+      onlyActive: "Active only",
+      perPage: "Items per page",
+      loadMore: "Load more",
+      loading: "Loading...",
+      empty: "No rewards found.",
+      points: "Points",
+      delivery: "Delivery",
+      category: "Category",
+      tags: "Tags",
+      statusActive: "Active",
+      statusInactive: "Inactive",
+      period: "Period",
+      from: "From",
+      to: "To",
+      all: "All",
+      email: "Email",
+      pickup: "Pickup",
+      shipping: "Shipping",
+    },
+    es: {
+      title: "Recompensas",
+      subtitle: "Elige una recompensa para canjear",
+      onlyActive: "Solo activas",
+      perPage: "Ítems por página",
+      loadMore: "Cargar más",
+      loading: "Cargando...",
+      empty: "No se encontraron recompensas.",
+      points: "Puntos",
+      delivery: "Entrega",
+      category: "Categoría",
+      tags: "Etiquetas",
+      statusActive: "Activa",
+      statusInactive: "Inactiva",
+      period: "Período",
+      from: "Desde",
+      to: "Hasta",
+      all: "Todas",
+      email: "Email",
+      pickup: "Retiro",
+      shipping: "Envío",
+    },
+  } as const;
+
+  return dict[lang];
+}
+
+function getI18nText(v: MongoI18n | null | undefined, lang: Lang) {
   if (!v) return "";
-  if (lang === "EN") return v.en ?? v.pt ?? v.es ?? "";
-  if (lang === "ES") return v.es ?? v.pt ?? v.en ?? "";
-  return v.pt ?? v.en ?? v.es ?? "";
+  const fallback = v.en || v.pt || v.es || "";
+  const byLang = v[lang] || "";
+  return byLang || fallback;
 }
 
-function computeTier(points: number) {
-  // ajuste como você quiser
-  if (points >= 10000) return "PLATINUM";
-  if (points >= 5000) return "BLACK";
-  if (points >= 1000) return "GOLD";
-  if (points > 0) return "SILVER";
-  return "NONE";
+function fmtDelivery(dt: DeliveryType, lang: Lang) {
+  const L = t(lang);
+  if (dt === "EMAIL") return L.email;
+  if (dt === "PICKUP") return L.pickup;
+  return L.shipping;
 }
 
-function safeImg(url?: string | null) {
-  if (!url) return "";
-  // remove lixo tipo "}" que estava gerando %7D e 404
-  return url.trim().replace(/[}\s]+$/g, "");
+function fmtDate(s?: string | null) {
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return String(s);
+  return d.toLocaleDateString();
 }
 
-export default function RewardsUser({ lang }: { lang: Lang }) {
-  const [fullName, setFullName] = useState<string>(""); // header "Bem-vindo"
-  const [email, setEmail] = useState<string>("");
+function isoDateOnly(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
-  const [points, setPoints] = useState<number>(0);
-  const tier = useMemo(() => computeTier(points), [points]);
+export default function RewardsUser({ lang }: Props) {
+  const L = useMemo(() => t(lang), [lang]);
 
-  const [rewards, setRewards] = useState<MongoReward[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<MongoReward[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // filtros
-  const [q, setQ] = useState("");
-  const [minPts, setMinPts] = useState("");
-  const [maxPts, setMaxPts] = useState("");
-  const [tagsText, setTagsText] = useState("");
+  const [activeOnly, setActiveOnly] = useState(true);
+  const [limit, setLimit] = useState<number>(10);
 
-  const tagsFilter = useMemo(() => {
-    return tagsText
-      .split(",")
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean);
-  }, [tagsText]);
+  // filtro de período (cliente-side; não filtra no Mongo agora)
+  const defaultFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return isoDateOnly(d);
+  }, []);
+  const defaultTo = useMemo(() => isoDateOnly(new Date()), []);
+  const [fromDate, setFromDate] = useState(defaultFrom);
+  const [toDate, setToDate] = useState(defaultTo);
 
-  async function loadUser() {
-    const attrs = await fetchUserAttributes();
-    const name =
-      attrs.name ||
-      attrs.given_name ||
-      attrs.family_name ||
-      attrs.preferred_username ||
-      "";
-    const mail = attrs.email || "";
-    setFullName(name || "Cliente");
-    setEmail(mail);
-    return { name, mail };
-  }
+  // paginação cursor (Mongo)
+  const [nextToken, setNextToken] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
 
-  async function loadRewards() {
-    // pega tudo (se quiser paginar depois, ok)
-    const res: any = await gqlClient.graphql({
-      query: MONGO_REWARDS_LIST,
-      variables: { limit: 200, nextToken: null, activeOnly: true },
-    });
-
-    const items: MongoReward[] = res?.data?.mongoRewardsList?.items || [];
-    setRewards(items.filter((r) => r.active));
-  }
-
-  async function loadBalanceByEmail(userEmail: string) {
-    // percorre páginas até achar o email
-    let nextToken: string | null = null;
-
-    for (let i = 0; i < 20; i++) {
+  async function load(reset = false) {
+    setLoading(true);
+    setError("");
+    try {
       const res: any = await gqlClient.graphql({
-        query: MONGO_BALANCES_LIST,
-        variables: { limit: 200, nextToken, name: null, userType: null },
+        query: MONGO_REWARDS_LIST,
+        variables: {
+          limit,
+          nextToken: reset ? null : nextToken,
+          activeOnly,
+        },
       });
 
-      const items: BalanceRow[] = res?.data?.mongoRewardsBalancesList?.items || [];
-      const found = items.find(
-        (x) => (x.userEmail || "").toLowerCase() === userEmail.toLowerCase()
-      );
+      const data: MongoRewardsListResponse = res?.data || {};
+      const page = data?.mongoRewardsList;
+      const newItems = (page?.items || []).filter(Boolean);
+      const nt = page?.nextToken ?? null;
 
-      if (found) {
-        setPoints(found.availablePoints || 0);
-        return;
-      }
+      setNextToken(nt);
+      setHasMore(!!nt);
 
-      nextToken = res?.data?.mongoRewardsBalancesList?.nextToken || null;
-      if (!nextToken) break;
-    }
-
-    // se não achar, fica 0
-    setPoints(0);
-  }
-
-  async function reloadAll() {
-    setLoading(true);
-    setError(null);
-    try {
-      const u = await loadUser();
-      await Promise.all([loadRewards(), u.mail ? loadBalanceByEmail(u.mail) : Promise.resolve()]);
+      setItems((prev) => (reset ? newItems : [...prev, ...newItems]));
     } catch (e: any) {
-      setError(e?.message || "Erro ao carregar dados.");
+      setError(pickErr(e));
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    reloadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang]);
-
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-
-    const min = minPts.trim() === "" ? null : Number(minPts);
-    const max = maxPts.trim() === "" ? null : Number(maxPts);
-
-    return rewards.filter((r) => {
-      const title = pickI18nText(r.title, lang).toLowerCase();
-      const desc = pickI18nText(r.description, lang).toLowerCase();
-      const code = (r.code || "").toLowerCase();
-
-      const okQ =
-        !query || title.includes(query) || desc.includes(query) || code.includes(query);
-
-      const okMin = min === null || r.pointsCost >= min;
-      const okMax = max === null || r.pointsCost <= max;
-
-      const rewardTags = (r.tags || []).map((t) => t.toLowerCase());
-      const okTags =
-        tagsFilter.length === 0 || tagsFilter.every((t) => rewardTags.includes(t));
-
-      return okQ && okMin && okMax && okTags;
-    });
-  }, [rewards, q, minPts, maxPts, tagsFilter, lang]);
-
-  // (por enquanto) o schema não tem mutation de "criar resgate" no mongo
-  function onRedeemClick(r: MongoReward) {
-    alert(
-      `Resgate solicitado (UI).\n\nPróximo passo: criar mutation no backend para gravar em rewards_redemptions.\nReward: ${r.code}`
-    );
+  function applyFilters() {
+    // reset list/cursor
+    setItems([]);
+    setNextToken(null);
+    setHasMore(false);
+    load(true);
   }
 
+  // aplica filtros de período localmente (como createdAt vem ISO)
+  const filteredByDate = useMemo(() => {
+    const fromIso = `${fromDate}T00:00:00.000Z`;
+    const toIso = `${toDate}T23:59:59.999Z`;
+    return items.filter((r) => {
+      const c = r.createdAt || "";
+      if (!c) return true;
+      return c >= fromIso && c <= toIso;
+    });
+  }, [items, fromDate, toDate]);
+
+  useEffect(() => {
+    // load inicial
+    applyFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const styles: Record<string, React.CSSProperties> = {
+    page: {
+      background: "#F6F7F9",
+      borderRadius: 14,
+      padding: 18,
+      border: "1px solid rgba(0,0,0,0.06)",
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box",
+    },
+    headerRow: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 12,
+    },
+    titleWrap: { display: "flex", flexDirection: "column", gap: 4 },
+    title: { margin: 0, fontSize: 20, fontWeight: 800, color: "#111827" },
+    subtle: { color: "rgba(17,24,39,0.65)", fontSize: 13, margin: 0 },
+
+    filterRow: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+      gap: 10,
+      alignItems: "end",
+      width: "100%",
+      marginBottom: 12,
+    },
+    label: { fontSize: 12, color: "rgba(17,24,39,0.7)", marginBottom: 6 },
+    input: {
+      width: "100%",
+      padding: 10,
+      borderRadius: 10,
+      border: "1px solid rgba(0,0,0,0.14)",
+      outline: "none",
+      background: "white",
+      boxSizing: "border-box",
+    },
+    checkboxRow: { display: "flex", gap: 10, alignItems: "center", paddingBottom: 2 },
+
+    btn: {
+      background: "#7A5A3A",
+      color: "white",
+      border: "none",
+      padding: "10px 14px",
+      borderRadius: 999,
+      cursor: "pointer",
+      fontWeight: 800,
+      width: "100%",
+      boxSizing: "border-box",
+    },
+    btnGhost: {
+      background: "white",
+      color: "#111827",
+      border: "1px solid rgba(0,0,0,0.14)",
+      padding: "10px 14px",
+      borderRadius: 999,
+      cursor: "pointer",
+      fontWeight: 800,
+      width: "100%",
+      boxSizing: "border-box",
+    },
+
+    error: {
+      background: "#FFECEC",
+      color: "#7F1D1D",
+      border: "1px solid rgba(127,29,29,0.25)",
+      padding: 12,
+      borderRadius: 10,
+      marginBottom: 12,
+      whiteSpace: "pre-wrap",
+    },
+
+    cards: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+      gap: 12,
+      width: "100%",
+    },
+    card: {
+      background: "white",
+      borderRadius: 14,
+      border: "1px solid rgba(0,0,0,0.08)",
+      padding: 12,
+      boxSizing: "border-box",
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      minHeight: 180,
+    },
+    cardTop: { display: "flex", gap: 10, alignItems: "flex-start" },
+    img: {
+      width: 64,
+      height: 64,
+      borderRadius: 12,
+      objectFit: "cover",
+      background: "#F3F4F6",
+      border: "1px solid rgba(0,0,0,0.06)",
+      flex: "0 0 auto",
+    },
+    h3: { margin: 0, fontSize: 16, fontWeight: 900, color: "#111827", lineHeight: 1.1 },
+    desc: { margin: 0, color: "rgba(17,24,39,0.75)", fontSize: 13, lineHeight: 1.35 },
+    meta: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
+    badge: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "4px 10px",
+      borderRadius: 999,
+      fontSize: 12,
+      fontWeight: 800,
+      background: "#F3F4F6",
+      color: "#374151",
+    },
+    badgeActive: { background: "#DCFCE7", color: "#166534" },
+    badgeInactive: { background: "#FEE2E2", color: "#7F1D1D" },
+
+    footerRow: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      marginTop: 12,
+      flexWrap: "wrap",
+    },
+    small: { fontSize: 12, color: "rgba(17,24,39,0.65)" },
+  };
+
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid rgba(0,0,0,0.08)",
-          borderRadius: 14,
-          padding: 16,
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#111827" }}>
-            Bem-vindo, {fullName} 👋
-          </div>
-          <div style={{ opacity: 0.75 }}>Escolha um reward para resgatar</div>
-          {email ? <div style={{ fontSize: 12, opacity: 0.55 }}>{email}</div> : null}
-        </div>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "#F3F4F6",
-              fontWeight: 900,
-            }}
-          >
-            Pontos disponíveis: {points}
-          </div>
-
-          <div
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "#F3F4F6",
-              fontWeight: 900,
-            }}
-          >
-            Nível: {tier}
-          </div>
-
-          <button
-            onClick={reloadAll}
-            style={{
-              borderRadius: 999,
-              padding: "8px 14px",
-              border: "1px solid rgba(0,0,0,0.14)",
-              background: "#fff",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            Recarregar
-          </button>
+    <div style={styles.page}>
+      <div style={styles.headerRow}>
+        <div style={styles.titleWrap}>
+          <h2 style={styles.title}>{L.title}</h2>
+          <p style={styles.subtle}>{L.subtitle}</p>
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 14,
-          background: "#fff",
-          border: "1px solid rgba(0,0,0,0.08)",
-          borderRadius: 14,
-          padding: 14,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>Filtros</div>
-          <div style={{ fontWeight: 900, opacity: 0.7 }}>Total: {filtered.length}</div>
-        </div>
+      <div style={styles.filterRow}>
+        <label>
+          <div style={styles.label}>{L.from}</div>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            style={styles.input}
+          />
+        </label>
 
-        <div
-          style={{
-            marginTop: 10,
-            display: "grid",
-            gridTemplateColumns: "2fr 1fr 1fr 2fr auto",
-            gap: 10,
-          }}
-        >
+        <label>
+          <div style={styles.label}>{L.to}</div>
           <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar (título, descrição ou código)"
-            style={{ height: 40, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)", padding: "0 12px" }}
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            style={styles.input}
           />
-          <input
-            value={minPts}
-            onChange={(e) => setMinPts(e.target.value)}
-            placeholder="Min pts"
-            style={{ height: 40, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)", padding: "0 12px" }}
-          />
-          <input
-            value={maxPts}
-            onChange={(e) => setMaxPts(e.target.value)}
-            placeholder="Max pts"
-            style={{ height: 40, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)", padding: "0 12px" }}
-          />
-          <input
-            value={tagsText}
-            onChange={(e) => setTagsText(e.target.value)}
-            placeholder="Tags (separadas por vírgula)"
-            style={{ height: 40, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)", padding: "0 12px" }}
-          />
-          <button
-            onClick={() => {
-              setQ("");
-              setMinPts("");
-              setMaxPts("");
-              setTagsText("");
-            }}
-            style={{
-              height: 40,
-              borderRadius: 12,
-              padding: "0 14px",
-              border: "1px solid rgba(0,0,0,0.14)",
-              background: "#fff",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
+        </label>
+
+        <label>
+          <div style={styles.label}>{L.perPage}</div>
+          <select
+            value={String(limit)}
+            onChange={(e) => setLimit(Number(e.target.value))}
+            style={styles.input}
           >
-            Limpar
-          </button>
-        </div>
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+        </label>
+
+        <label>
+          <div style={styles.label}>{L.onlyActive}</div>
+          <div style={{ ...styles.input, ...styles.checkboxRow }}>
+            <input
+              type="checkbox"
+              checked={activeOnly}
+              onChange={(e) => setActiveOnly(e.target.checked)}
+            />
+            <span style={{ fontSize: 13, color: "#111827", fontWeight: 700 }}>
+              {activeOnly ? L.statusActive : L.all}
+            </span>
+          </div>
+        </label>
+
+        <button onClick={applyFilters} style={styles.btn} disabled={loading}>
+          {loading ? L.loading : "Apply"}
+        </button>
       </div>
 
-      {loading ? (
-        <div style={{ marginTop: 14, padding: 16, color: "#111827", fontWeight: 900 }}>Carregando…</div>
-      ) : error ? (
-        <div
-          style={{
-            marginTop: 14,
-            background: "#fff",
-            border: "1px solid rgba(220,38,38,0.25)",
-            borderRadius: 14,
-            padding: 14,
-            color: "#b91c1c",
-            fontWeight: 900,
-          }}
-        >
-          {error}
+      {error && <div style={styles.error}>{error}</div>}
+
+      {filteredByDate.length === 0 ? (
+        <div style={{ padding: 12 }}>
+          {loading ? L.loading : L.empty}
         </div>
       ) : (
-        <div
-          style={{
-            marginTop: 14,
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 14,
-          }}
-        >
-          {filtered.map((r) => {
-            const title = pickI18nText(r.title, lang) || r.code;
-            const desc = pickI18nText(r.description, lang);
-            const canRedeem = points >= r.pointsCost;
-            const img = safeImg(r.imageUrl);
+        <div style={styles.cards}>
+          {filteredByDate.map((r) => {
+            const title = getI18nText(r.title, lang) || r.code;
+            const desc = getI18nText(r.description || null, lang);
 
             return (
-              <div
-                key={r.id}
-                style={{
-                  background: "#fff",
-                  border: "1px solid rgba(0,0,0,0.08)",
-                  borderRadius: 14,
-                  padding: 14,
-                  display: "grid",
-                  gridTemplateColumns: "70px 1fr",
-                  gap: 12,
-                }}
-              >
-                <div
-                  style={{
-                    width: 70,
-                    height: 70,
-                    borderRadius: 12,
-                    background: "#F3F4F6",
-                    overflow: "hidden",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "1px solid rgba(0,0,0,0.06)",
-                  }}
-                >
-                  {img ? (
-                    <img src={img} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <div key={r.id} style={styles.card}>
+                <div style={styles.cardTop}>
+                  {r.imageUrl ? (
+                    <img src={r.imageUrl} alt={title} style={styles.img} />
                   ) : (
-                    <span style={{ opacity: 0.6, fontWeight: 900 }}>—</span>
+                    <div style={styles.img} />
                   )}
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.h3}>{title}</div>
+                    {desc ? <p style={styles.desc}>{desc}</p> : null}
+                    <div style={{ ...styles.small, marginTop: 6 }}>
+                      {r.category ? `${L.category}: ${r.category} • ` : ""}
+                      {r.createdAt ? `${fmtDate(r.createdAt)}` : ""}
+                    </div>
+                  </div>
                 </div>
 
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 950, fontSize: 16, color: "#111827" }}>{title}</div>
-                  {desc ? <div style={{ opacity: 0.75, marginTop: 2 }}>{desc}</div> : null}
+                <div style={styles.meta}>
+                  <span style={styles.badge}>
+                    {L.points}: {r.pointsCost}
+                  </span>
+                  <span style={styles.badge}>
+                    {L.delivery}: {fmtDelivery(r.deliveryType, lang)}
+                  </span>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                    <span style={{ background: "#F3F4F6", borderRadius: 999, padding: "6px 10px", fontWeight: 900 }}>
-                      Pontos: {r.pointsCost}
-                    </span>
-                    <span style={{ background: "#F3F4F6", borderRadius: 999, padding: "6px 10px", fontWeight: 900 }}>
-                      Entrega: {r.deliveryType || "—"}
-                    </span>
-                  </div>
-
-                  <button
-                    disabled={!canRedeem}
-                    onClick={() => onRedeemClick(r)}
+                  <span
                     style={{
-                      marginTop: 12,
-                      width: "100%",
-                      height: 40,
-                      borderRadius: 999,
-                      border: "0",
-                      fontWeight: 950,
-                      cursor: canRedeem ? "pointer" : "not-allowed",
-                      background: canRedeem ? "#7A5A3A" : "#D1D5DB",
-                      color: "#fff",
+                      ...styles.badge,
+                      ...(r.active ? styles.badgeActive : styles.badgeInactive),
                     }}
                   >
-                    {canRedeem ? "Resgatar" : "Pontos insuficientes"}
-                  </button>
+                    {r.active ? L.statusActive : L.statusInactive}
+                  </span>
                 </div>
+
+                {Array.isArray(r.tags) && r.tags.length > 0 ? (
+                  <div style={{ ...styles.small }}>
+                    {L.tags}: {r.tags.join(", ")}
+                  </div>
+                ) : null}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* responsivo */}
-      <style>{`
-        @media (max-width: 980px) {
-          .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-      `}</style>
+      <div style={styles.footerRow}>
+        <div style={styles.small}>
+          Showing: <b>{filteredByDate.length}</b>
+        </div>
+
+        {hasMore ? (
+          <button
+            onClick={() => load(false)}
+            style={{ ...styles.btnGhost, width: 220 }}
+            disabled={loading}
+          >
+            {loading ? L.loading : L.loadMore}
+          </button>
+        ) : (
+          <div style={styles.small} />
+        )}
+      </div>
     </div>
   );
 }
