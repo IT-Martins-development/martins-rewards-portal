@@ -12,7 +12,7 @@ import RewardsCRUD from "./RewardsCrud";
 import RewardsApprovals from "./RewardsApprovals";
 import RewardsReport from "./RewardsReport";
 import RewardsBalancesReport from "./RewardsBalancesReport";
-import RewardsUser from "./RewardsUser";
+import RewardsUser from "./RewardsUserPortal";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
@@ -185,7 +185,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             flexWrap: "wrap",
           }}
         >
-          <div style={{ fontWeight: 900, color: "#111827" }}>Martins Rewards</div>
+          <div style={{ fontWeight: 900, color: "#111827" }}>Martins Development</div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <select
@@ -214,7 +214,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           </div>
         </div>
 
-        <RewardsUser lang={langLabel} />
+        <RewardsUser lang={lang} />
       </div>
     );
   }
@@ -251,7 +251,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     <div style={shell}>
       <div style={layout}>
         <aside style={sidebar}>
-          <div style={brand}>• Martins Rewards</div>
+          <div style={brand}>• Martins Development</div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
             <div style={{ opacity: 0.75, fontSize: 12, fontWeight: 900, letterSpacing: 0.6 }}>
