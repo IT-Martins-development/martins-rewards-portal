@@ -5,6 +5,7 @@ import awsExports from "./aws-exports";
 import App from "./App";
 import "./index.css";
 
+// 🔥 ESSA LINHA É OBRIGATÓRIA
 Amplify.configure(awsExports);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
