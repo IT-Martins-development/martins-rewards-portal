@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from "react";
+// src/App.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { Amplify } from "aws-amplify";
+import { fetchAuthSession } from "aws-amplify/auth";
 import awsExports from "./aws-exports";
 import "./index.css";
 
@@ -9,7 +11,8 @@ import "@aws-amplify/ui-react/styles.css";
 import RewardsCRUD from "./RewardsCrud";
 import RewardsApprovals from "./RewardsApprovals";
 import RewardsReport from "./RewardsReport";
-import RewardsBalancesReport from "./RewardsBalancesReport"; // ✅ EDITÁVEL
+import RewardsBalancesReport from "./RewardsBalancesReport";
+import RewardsUser from "./RewardsUser";
 import type { Lang } from "./types/lang";
 
 export type { Lang } from "./types/lang";
@@ -17,6 +20,7 @@ export type { Lang } from "./types/lang";
 Amplify.configure(awsExports);
 
 type Page = "crud" | "approvals" | "report" | "balances";
+type Role = "ADMIN" | "INVESTOR" | "NONE";
 
 const shell: React.CSSProperties = {
   minHeight: "100vh",
@@ -88,15 +92,109 @@ const logoutBtn: React.CSSProperties = {
   cursor: "pointer",
 };
 
+function normalizeGroups(groups?: string[]) {
+  return (groups || []).map((g) => String(g).trim().toLowerCase());
+}
+
+function roleFromGroups(groups?: string[]): Role {
+  const g = normalizeGroups(groups);
+  const isAdmin = g.includes("adminrewards");
+  const isInvestor = g.includes("investor");
+  if (isAdmin) return "ADMIN";
+  if (isInvestor) return "INVESTOR";
+  return "NONE";
+}
+
 function AppShell({ signOut }: { signOut?: () => void }) {
   const [page, setPage] = useState<Page>("crud");
   const [lang, setLang] = useState<Lang>("pt");
+  const [role, setRole] = useState<Role>("NONE");
+  const [checking, setChecking] = useState(true);
 
   const langLabel = useMemo<Uppercase<Lang>>(() => {
     const m: Record<Lang, Uppercase<Lang>> = { pt: "PT", en: "EN", es: "ES" };
     return m[lang];
   }, [lang]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAccess() {
+      setChecking(true);
+      try {
+        const session = await fetchAuthSession();
+        const groups = (session.tokens?.idToken?.payload?.["cognito:groups"] as string[]) || [];
+        const r = roleFromGroups(groups);
+
+        // Regra pedida: Investor NÃO pode cair no admin.
+        // Se tiver AdminRewards, entra admin. Se não, e tiver Investor, entra portal user.
+        if (!cancelled) setRole(r);
+      } catch {
+        if (!cancelled) setRole("NONE");
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    }
+
+    checkAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Enquanto checa grupos
+  if (checking) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", color: "#111827", fontWeight: 800 }}>
+          Carregando…
+        </div>
+      </div>
+    );
+  }
+
+  // Investor: mostra somente o portal do usuário (sem menu admin)
+  if (role === "INVESTOR") {
+    return (
+      <div style={{ minHeight: "100vh", background: "#F6F7F9" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: 14, maxWidth: 1200, margin: "0 auto" }}>
+          <button style={logoutBtn} onClick={() => signOut?.()}>
+            Sair
+          </button>
+        </div>
+        <RewardsUser lang={lang} />
+      </div>
+    );
+  }
+
+  // Sem grupo permitido
+  if (role === "NONE") {
+    return (
+      <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
+        <div
+          style={{
+            maxWidth: 900,
+            margin: "0 auto",
+            background: "white",
+            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: 12,
+            padding: 18,
+            color: "#111827",
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Acesso negado</div>
+          <div style={{ opacity: 0.75, marginBottom: 14 }}>
+            Seu usuário não está no grupo <b>Investor</b> nem <b>AdminRewards</b>.
+          </div>
+          <button style={{ ...logoutBtn, background: "#7A5A3A" }} onClick={() => signOut?.()}>
+            Sair
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ADMIN: mantém exatamente o layout/cores/menus atuais
   return (
     <div style={shell}>
       <div style={layout}>
@@ -105,32 +203,19 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 
           <div style={menuTitle}>MENU</div>
 
-          <button
-            style={page === "crud" ? btnActive : btn}
-            onClick={() => setPage("crud")}
-          >
+          <button style={page === "crud" ? btnActive : btn} onClick={() => setPage("crud")}>
             Rewards (CRUD)
           </button>
 
-          <button
-            style={page === "approvals" ? btnActive : btn}
-            onClick={() => setPage("approvals")}
-          >
+          <button style={page === "approvals" ? btnActive : btn} onClick={() => setPage("approvals")}>
             Aprovações
           </button>
 
-          <button
-            style={page === "report" ? btnActive : btn}
-            onClick={() => setPage("report")}
-          >
+          <button style={page === "report" ? btnActive : btn} onClick={() => setPage("report")}>
             Relatório
           </button>
 
-          {/* ✅ NOVO/EDITÁVEL: relatório de saldos */}
-          <button
-            style={page === "balances" ? btnActive : btn}
-            onClick={() => setPage("balances")}
-          >
+          <button style={page === "balances" ? btnActive : btn} onClick={() => setPage("balances")}>
             Saldos
           </button>
 
@@ -156,9 +241,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             <option value="es">ES</option>
           </select>
 
-          <div style={{ marginTop: 10, opacity: 0.6, fontSize: 12 }}>
-            Selecionado: {langLabel}
-          </div>
+          <div style={{ marginTop: 10, opacity: 0.6, fontSize: 12 }}>Selecionado: {langLabel}</div>
         </aside>
 
         <main style={contentWrap}>
@@ -171,8 +254,6 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {page === "crud" && <RewardsCRUD lang={lang} />}
           {page === "approvals" && <RewardsApprovals lang={lang} />}
           {page === "report" && <RewardsReport lang={langLabel} />}
-
-          {/* ✅ Aqui chama o componente EDITÁVEL */}
           {page === "balances" && <RewardsBalancesReport lang={langLabel} />}
         </main>
       </div>
@@ -181,9 +262,5 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 }
 
 export default function App() {
-  return (
-    <Authenticator>
-      {({ signOut }) => <AppShell signOut={signOut} />}
-    </Authenticator>
-  );
+  return <Authenticator>{({ signOut }) => <AppShell signOut={signOut} />}</Authenticator>;
 }
