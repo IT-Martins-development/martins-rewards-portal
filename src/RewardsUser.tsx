@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { generateClient } from "aws-amplify/api";
+import { gqlClient } from "./amplifyClient"; // ajuste o caminho
 import { getCurrentUser, fetchUserAttributes } from "aws-amplify/auth";
 
 type Lang = "PT" | "EN" | "ES";
@@ -20,8 +20,6 @@ type Reward = {
 type Props = {
   lang: Lang;
 };
-
-const client = generateClient();
 
 // ✅ ajuste aqui se o seu schema tiver outro nome
 const LIST_REWARDS = /* GraphQL */ `
@@ -181,7 +179,7 @@ export default function RewardsUser({ lang }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res: any = await client.graphql({ query: LIST_REWARDS });
+      const res: any = await gqlClient.graphql({ query: LIST_REWARDS });
       const items: Reward[] = res?.data?.listRewards?.items || [];
       // portal do user: mostra só ativos
       setRewards(items.filter((r) => r?.active));
