@@ -27,15 +27,13 @@ const LIST_REWARDS = /* GraphQL */ `
     listRewards {
       items {
         id
-        code
         title
         description
-        imageUrl
         pointsCost
-        active
-        deliveryType
-        category
-        tags
+        isActive
+        imageUrl
+        createdAt
+        updatedAt
       }
     }
   }
@@ -180,9 +178,8 @@ export default function RewardsUser({ lang }: Props) {
     setError(null);
     try {
       const res: any = await gqlClient.graphql({ query: LIST_REWARDS });
-      const items: Reward[] = res?.data?.listRewards?.items || [];
-      // portal do user: mostra só ativos
-      setRewards(items.filter((r) => r?.active));
+      const items = res?.data?.listRewards?.items ?? [];
+      setRewards(items.filter((r: any) => r.isActive));
     } catch (e: any) {
       setError(e?.message || "Erro ao carregar rewards.");
     } finally {

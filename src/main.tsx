@@ -1,13 +1,10 @@
-import "./amplifyInit";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Amplify } from "aws-amplify";
-import awsExports from "./aws-exports";
 import App from "./App";
 import "./index.css";
 
-// 🔥 ESSA LINHA É OBRIGATÓRIA
-Amplify.configure(awsExports);
+// garante que Amplify configurou antes de qualquer uso
+import "./amplifyClient";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
