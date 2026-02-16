@@ -87,13 +87,13 @@ const M_MONGO_REDEEM = /* GraphQL */ `
 function t(lang: Uppercase<Lang>) {
   const L = lang as Uppercase<Lang>;
   const dict: Record<string, Record<Uppercase<Lang>, string>> = {
-    breadcrumbs: { PT: "Referrals • Rewards", EN: "Referrals • Rewards", ES: "Referencias • Rewards" },
+    breadcrumbs: { PT: "Rewards", EN: "Rewards", ES: "Rewards" },
     search: { PT: "Buscar rewards…", EN: "Search rewards…", ES: "Buscar rewards…" },
     title: { PT: "Rewards", EN: "Rewards", ES: "Rewards" },
     subtitle: {
-      PT: "Resgate recompensas usando seus pontos. Visual no padrão corporativo do sistema.",
-      EN: "Redeem rewards using your points. Corporate layout standard.",
-      ES: "Canjea recompensas usando tus puntos. Estándar corporativo.",
+      PT: "Resgate recompensas usando seus pontos.",
+      EN: "Redeem rewards using your points. ",
+      ES: "Canjea recompensas usando tus puntos. ",
     },
     reload: { PT: "Recarregar", EN: "Reload", ES: "Recargar" },
     level: { PT: "Nível:", EN: "Level:", ES: "Nivel:" },
@@ -390,7 +390,7 @@ export default function RewardsUser({ lang }: Props) {
                       <span key={tg} style={tag}>
                         {tg}
                       </span>
-                    ))}
+                    ))}git 
                   </div>
 
                   <button
