@@ -1,16 +1,10 @@
 // src/RewardsUser.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { gqlClient } from "./lib/amplifyClient";
 import { fetchUserAttributes } from "aws-amplify/auth";
+import { gqlClient } from "./lib/amplifyClient";
+import type { Lang } from "./types/lang";
 
-/**
- * Portal do usuário (grupo Cognito: Investor)
- * - Layout baseado no protótipo HTML
- * - Mesma lógica do Admin para saldo: mongoRewardsBalancesList e filtra por email
- * - Redeem: mongoRewardsBalanceSet usando o userId REAL do Mongo (evita criar “novo id”)
- */
-
-type Lang = "PT" | "EN" | "ES";
+type Props = { lang: Uppercase<Lang> };
 
 type MongoI18n = { pt?: string | null; en?: string | null; es?: string | null };
 type MongoReward = {
@@ -22,22 +16,19 @@ type MongoReward = {
   tags?: string[] | null;
   pointsCost: number;
   imageUrl?: string | null;
-  deliveryType?: string | null;
+  deliveryType: string;
   active: boolean;
 };
 
 type BalanceRow = {
   userId: string;
-  userEmail?: string | null;
   userName?: string | null;
-  userType?: string | null;
   availablePoints: number;
   redeemedPoints: number;
-  levelId?: string | null;
-  updatedAt?: string | null;
+  levelId?: string | null; // se estiver exposto no schema
 };
 
-const LIST_REWARDS = /* GraphQL */ `
+const Q_MONGO_REWARDS_LIST = /* GraphQL */ `
   query MongoRewardsList($limit: Int, $nextToken: String, $activeOnly: Boolean) {
     mongoRewardsList(limit: $limit, nextToken: $nextToken, activeOnly: $activeOnly) {
       items {
@@ -57,495 +48,365 @@ const LIST_REWARDS = /* GraphQL */ `
   }
 `;
 
-const LIST_BALANCES = /* GraphQL */ `
-  query MongoRewardsBalancesList($limit: Int, $nextToken: String, $name: String, $userType: String) {
-    mongoRewardsBalancesList(limit: $limit, nextToken: $nextToken, name: $name, userType: $userType) {
+// OBS: se "levelId" não existir no schema, REMOVA "levelId" daqui e do BalanceRow
+const Q_MONGO_BALANCES_LIST = /* GraphQL */ `
+  query MongoRewardsBalancesList($limit: Int, $nextToken: String) {
+    mongoRewardsBalancesList(limit: $limit, nextToken: $nextToken) {
       items {
         userId
         userName
-        userEmail
-        userType
         availablePoints
         redeemedPoints
         levelId
-        updatedAt
       }
       nextToken
     }
   }
 `;
 
-const BALANCE_SET = /* GraphQL */ `
-  mutation MongoRewardsBalanceSet($userId: ID!, $availablePoints: Int, $redeemedPoints: Int, $reason: String) {
-    mongoRewardsBalanceSet(userId: $userId, availablePoints: $availablePoints, redeemedPoints: $redeemedPoints, reason: $reason) {
+/**
+ * ✅ MUTATION CORRETO (VOCÊ VAI CRIAR NO APPSYNC / MONGO):
+ * - cria redemption PENDING
+ * - cria ledger
+ * - debita availablePoints
+ * - incrementa redeemedPoints
+ */
+const M_MONGO_REDEEM = /* GraphQL */ `
+  mutation MongoRewardsRedeem($input: MongoRewardsRedeemInput!) {
+    mongoRewardsRedeem(input: $input) {
       ok
       message
-      userId
+      redemptionId
       availablePoints
       redeemedPoints
-      totalPoints
-      updatedAt
+      levelId
     }
   }
 `;
 
-function i18n(lang: Lang) {
-  const isPT = lang === "PT";
-  const isEN = lang === "EN";
-  const isES = lang === "ES";
-  return {
-    breadcrumbs: isEN ? "Referrals • Rewards" : isES ? "Referidos • Recompensas" : "Referrals • Rewards",
-    search: isEN ? "Search rewards..." : isES ? "Buscar recompensas..." : "Buscar rewards...",
-    rewardsTitle: isEN ? "Rewards" : isES ? "Recompensas" : "Rewards",
-    rewardsSubtitle: isEN
-      ? "Redeem rewards using your points. Corporate UI standard."
-      : isES
-        ? "Canjea recompensas usando tus puntos. Estándar corporativo."
-        : "Resgate recompensas usando seus pontos. Visual no padrão corporativo do sistema.",
-    reload: isEN ? "Reload" : isES ? "Recargar" : "Recarregar",
+function t(lang: Uppercase<Lang>) {
+  const L = lang as Uppercase<Lang>;
+  const dict: Record<string, Record<Uppercase<Lang>, string>> = {
+    breadcrumbs: { PT: "Referrals • Rewards", EN: "Referrals • Rewards", ES: "Referencias • Rewards" },
+    search: { PT: "Buscar rewards…", EN: "Search rewards…", ES: "Buscar rewards…" },
+    title: { PT: "Rewards", EN: "Rewards", ES: "Rewards" },
+    subtitle: {
+      PT: "Resgate recompensas usando seus pontos. Visual no padrão corporativo do sistema.",
+      EN: "Redeem rewards using your points. Corporate layout standard.",
+      ES: "Canjea recompensas usando tus puntos. Estándar corporativo.",
+    },
+    reload: { PT: "Recarregar", EN: "Reload", ES: "Recargar" },
+    level: { PT: "Nível:", EN: "Level:", ES: "Nivel:" },
 
-    // cards (4 itens)
-    totalPoints: isEN ? "Total points" : isES ? "Puntos totales" : "Total pontos conquistados",
-    availablePoints: isEN ? "Available points" : isES ? "Puntos disponibles" : "Pontos disponíveis",
-    availableRewards: isEN ? "Available rewards" : isES ? "Recompensas disponíveis" : "Rewards disponíveis",
-    redeemed: isEN ? "Redeemed" : isES ? "Canjeados" : "Resgatados",
+    totalPoints: { PT: "Total pontos conquistados", EN: "Total points earned", ES: "Total puntos ganados" },
+    availablePoints: { PT: "Pontos disponíveis", EN: "Available points", ES: "Puntos disponibles" },
+    redeemedPoints: { PT: "Resgatados", EN: "Redeemed", ES: "Canjeados" },
+    rewardsAvailable: { PT: "Rewards disponíveis", EN: "Available rewards", ES: "Rewards disponibles" },
 
-    redeem: isEN ? "Redeem" : isES ? "Canjear" : "Resgatar",
-    insufficient: isEN ? "Not enough points" : isES ? "Puntos insuficientes" : "Pontos insuficientes",
-    confirmTitle: isEN ? "Confirm redeem?" : isES ? "¿Confirmar canje?" : "Confirmar resgate?",
-    confirmBody: (title: string, pts: number) =>
-      isEN
-        ? `Redeem "${title}" for ${pts} points? It will go to approval (PENDING).`
-        : isES
-          ? `¿Canjear "${title}" por ${pts} puntos? Irá a aprobación (PENDING).`
-          : `Resgatar "${title}" por ${pts} pontos? Vai para aprovação (PENDING).`,
-    level: isEN ? "Level" : isES ? "Nivel" : "Nível",
+    redeem: { PT: "Resgatar", EN: "Redeem", ES: "Canjear" },
+    insufficient: { PT: "Pontos insuficientes", EN: "Insufficient points", ES: "Puntos insuficientes" },
+    confirmTitle: { PT: "Confirmar resgate", EN: "Confirm redemption", ES: "Confirmar canje" },
+    confirmMsg: {
+      PT: "Deseja resgatar este reward? A solicitação ficará pendente para aprovação.",
+      EN: "Redeem this reward? The request will be pending approval.",
+      ES: "¿Canjear esta recompensa? La solicitud quedará pendiente de aprobación.",
+    },
+    loadError: { PT: "Erro ao carregar", EN: "Failed to load", ES: "Error al cargar" },
   };
+
+  const get = (key: string) => dict[key]?.[L] ?? dict[key]?.PT ?? key;
+  return { get };
 }
 
-function pickI18nValue(v: MongoI18n | null | undefined, lang: Lang): string {
+function pickI18n(v: MongoI18n | null | undefined, lang: Uppercase<Lang>): string {
   if (!v) return "";
-  if (lang === "PT") return (v.pt ?? v.en ?? v.es ?? "").toString();
-  if (lang === "ES") return (v.es ?? v.en ?? v.pt ?? "").toString();
-  return (v.en ?? v.pt ?? v.es ?? "").toString();
+  const L = lang.toLowerCase() as "pt" | "en" | "es";
+  return (v[L] ?? v.pt ?? v.en ?? v.es ?? "").trim();
 }
 
-export default function RewardsUser({ lang }: { lang: Lang }) {
-  const t = useMemo(() => i18n(lang), [lang]);
+function safeNum(n: any, fallback = 0): number {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : fallback;
+}
 
+/** ======= Styles (mantém o layout do protótipo) ======= */
+const pageWrap: React.CSSProperties = { background: "#F6F7F9", minHeight: "calc(100vh - 68px)", paddingBottom: 28 };
+const container: React.CSSProperties = { maxWidth: 1220, margin: "0 auto", padding: "0 18px" };
+
+const topRow: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "16px 0 10px" };
+const crumb: React.CSSProperties = { color: "#6B7280", fontWeight: 700 };
+const searchWrap: React.CSSProperties = { flex: 1, display: "flex", alignItems: "center", gap: 10 };
+const searchInput: React.CSSProperties = {
+  width: "100%", height: 44, borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "white",
+  padding: "0 18px 0 44px", outline: "none", fontSize: 15
+};
+const searchIcon: React.CSSProperties = { position: "absolute", marginLeft: 16, color: "#6B7280", fontSize: 16 };
+
+const levelPill: React.CSSProperties = {
+  borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "white",
+  padding: "10px 14px", fontWeight: 900, color: "#111827", whiteSpace: "nowrap"
+};
+
+const headRow: React.CSSProperties = { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "10px 0 14px" };
+const title: React.CSSProperties = { fontSize: 44, fontWeight: 950, letterSpacing: -1, color: "#111827" };
+const subtitle: React.CSSProperties = { color: "#6B7280", fontSize: 20, fontWeight: 600, marginTop: 6 };
+
+const reloadBtn: React.CSSProperties = {
+  borderRadius: 14, border: "1px solid rgba(0,0,0,0.14)", background: "white",
+  padding: "12px 18px", fontWeight: 900, cursor: "pointer", height: 48
+};
+
+const statsRow: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 18 };
+const card: React.CSSProperties = { background: "white", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 18, padding: 18, boxShadow: "0 6px 18px rgba(17,24,39,0.06)" };
+const cardK: React.CSSProperties = { color: "#6B7280", fontWeight: 800, fontSize: 16, marginBottom: 8 };
+const cardV: React.CSSProperties = { color: "#111827", fontWeight: 950, fontSize: 44 };
+
+const grid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 18, marginTop: 18 };
+
+const rewardCard: React.CSSProperties = { background: "white", borderRadius: 18, border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden", boxShadow: "0 6px 18px rgba(17,24,39,0.06)" };
+const imageBox: React.CSSProperties = { height: 150, background: "#0B1220", position: "relative" };
+const ptsPill: React.CSSProperties = {
+  position: "absolute", top: 12, right: 12, borderRadius: 999, background: "rgba(255,255,255,0.92)",
+  padding: "6px 10px", fontWeight: 950, color: "#111827", display: "flex", alignItems: "center", gap: 8
+};
+const coin: React.CSSProperties = { width: 10, height: 10, borderRadius: 999, background: "#F6C343", display: "inline-block" };
+
+const body: React.CSSProperties = { padding: 16 };
+const rTitle: React.CSSProperties = { fontSize: 18, fontWeight: 950, color: "#111827", marginBottom: 6 };
+const rDesc: React.CSSProperties = { color: "#6B7280", fontWeight: 650, lineHeight: 1.35, minHeight: 56 };
+const tagRow: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12, minHeight: 36 };
+const tag: React.CSSProperties = { borderRadius: 999, border: "1px solid rgba(0,0,0,0.10)", background: "#F3F4F6", padding: "6px 10px", fontWeight: 800, color: "#111827", fontSize: 13 };
+
+const btn: React.CSSProperties = { marginTop: 14, width: "100%", borderRadius: 12, border: "1px solid rgba(0,0,0,0.10)", background: "#0F172A", color: "white", fontWeight: 950, padding: "12px 14px", cursor: "pointer", fontSize: 16 };
+const btnDisabled: React.CSSProperties = { ...btn, background: "#D1D5DB", color: "#374151", cursor: "not-allowed" };
+
+export default function RewardsUser({ lang }: Props) {
+  const { get } = t(lang);
+
+  const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // balance
-  const [balanceUserId, setBalanceUserId] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
   const [levelId, setLevelId] = useState<string>("NONE");
   const [availablePoints, setAvailablePoints] = useState<number>(0);
   const [redeemedPoints, setRedeemedPoints] = useState<number>(0);
 
-  // rewards
   const [rewards, setRewards] = useState<MongoReward[]>([]);
-  const [nextToken, setNextToken] = useState<string | null>(null);
 
-  // search (apenas search no header)
-  const [q, setQ] = useState("");
+  const totalPoints = useMemo(() => safeNum(availablePoints, 0) + safeNum(redeemedPoints, 0), [availablePoints, redeemedPoints]);
+  const rewardsAvailable = useMemo(() => rewards.filter((r) => r.active).length, [rewards]);
 
-  const totalPoints = useMemo(
-    () => (availablePoints || 0) + (redeemedPoints || 0),
-    [availablePoints, redeemedPoints]
-  );
-
-  async function loadUserAndBalance() {
-    const attrs = await fetchUserAttributes();
-    const mail = (attrs.email || "").toLowerCase().trim();
-
-    // MESMA lógica do Admin: lista e filtra localmente
-    const res: any = await gqlClient.graphql({
-      query: LIST_BALANCES,
-      variables: { limit: 2000, nextToken: null, name: null, userType: null },
+  const filteredRewards = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    const base = rewards.filter((r) => r.active);
+    if (!qq) return base;
+    return base.filter((r) => {
+      const title = pickI18n(r.title, lang).toLowerCase();
+      const desc = pickI18n(r.description ?? undefined, lang).toLowerCase();
+      const code = (r.code || "").toLowerCase();
+      const tags = (r.tags || []).join(" ").toLowerCase();
+      return [title, desc, code, tags].some((x) => x.includes(qq));
     });
+  }, [q, rewards, lang]);
 
-    const items: BalanceRow[] = res?.data?.mongoRewardsBalancesList?.items || [];
-    const row = items.find((r) => (r.userEmail || "").toLowerCase().trim() === mail) || null;
-
-    if (!row) {
-      // Não cria nada automaticamente (evita userId “novo”)
-      setBalanceUserId("");
-      setLevelId("NONE");
-      setAvailablePoints(0);
-      setRedeemedPoints(0);
-      return;
-    }
-
-    setBalanceUserId(row.userId);
-    setLevelId((row.levelId || "NONE").toString());
-    setAvailablePoints(Number(row.availablePoints || 0));
-    setRedeemedPoints(Number(row.redeemedPoints || 0));
-  }
-
-  async function loadRewards(reset = false) {
-    const tok = reset ? null : nextToken;
-    const res: any = await gqlClient.graphql({
-      query: LIST_REWARDS,
-      variables: { limit: 200, nextToken: tok, activeOnly: true },
-    });
-
-    const items: MongoReward[] = res?.data?.mongoRewardsList?.items || [];
-    const nt = res?.data?.mongoRewardsList?.nextToken || null;
-
-    setNextToken(nt);
-    setRewards((prev) => (reset ? items : [...prev, ...items]));
-  }
-
-  async function reloadAll() {
-    setError(null);
+  async function loadAll() {
     setLoading(true);
+    setError(null);
+
     try {
-      await loadUserAndBalance();
-      setRewards([]);
-      setNextToken(null);
-      await loadRewards(true);
+      const attrs = await fetchUserAttributes();
+      const sub = (attrs.sub || "").trim();
+      setUserId(sub);
+
+      const rRes: any = await gqlClient.graphql({
+        query: Q_MONGO_REWARDS_LIST,
+        variables: { limit: 500, nextToken: null, activeOnly: true },
+      });
+      setRewards(rRes?.data?.mongoRewardsList?.items || []);
+
+      const bRes: any = await gqlClient.graphql({
+        query: Q_MONGO_BALANCES_LIST,
+        variables: { limit: 5000, nextToken: null },
+      });
+
+      const rows: BalanceRow[] = bRes?.data?.mongoRewardsBalancesList?.items || [];
+      const me = rows.find((x) => String(x.userId || "").trim() === sub);
+
+      if (me) {
+        setAvailablePoints(safeNum(me.availablePoints, 0));
+        setRedeemedPoints(safeNum(me.redeemedPoints, 0));
+        setLevelId((me.levelId || "NONE").toUpperCase());
+      } else {
+        // NÃO criar saldo no portal do usuário. Se não existe, é problema de carga/seed/integração.
+        setAvailablePoints(0);
+        setRedeemedPoints(0);
+        setLevelId("NONE");
+      }
     } catch (e: any) {
-      setError(e?.message || "Erro ao carregar");
+      console.error(e);
+      setError(e?.errors?.[0]?.message || e?.message || get("loadError"));
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    reloadAll();
+    loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    if (!query) return rewards;
+  async function redeem(reward: MongoReward) {
+    if (!userId) return;
+    if (availablePoints < reward.pointsCost) return;
 
-    return rewards.filter((r) => {
-      const title = pickI18nValue(r.title, lang).toLowerCase();
-      const desc = pickI18nValue(r.description || null, lang).toLowerCase();
-      const code = (r.code || "").toLowerCase();
-      const cat = (r.category || "").toLowerCase();
-      const tags = (r.tags || []).map((x) => String(x).toLowerCase());
-
-      return (
-        title.includes(query) ||
-        desc.includes(query) ||
-        code.includes(query) ||
-        cat.includes(query) ||
-        tags.some((x) => x.includes(query))
-      );
-    });
-  }, [rewards, q, lang]);
-
-  async function redeemReward(r: MongoReward) {
-    if (!balanceUserId) {
-      setError("Saldo do usuário não encontrado (verifique se existe no rewards_points_balance).");
-      return;
-    }
-    if (availablePoints < r.pointsCost) return;
-
-    const title = pickI18nValue(r.title, lang) || r.code;
-    const ok = window.confirm(`${t.confirmTitle}\n\n${t.confirmBody(title, r.pointsCost)}`);
+    const ok = window.confirm(`${get("confirmTitle")}\n\n${get("confirmMsg")}`);
     if (!ok) return;
 
-    setSavingId(r.id);
+    setRedeemingId(reward.id);
     setError(null);
 
     try {
-      // IMPORTANTÍSSIMO: usa o userId REAL do Mongo (do balance), não sub/email
-      const newAvailable = Math.max(0, Number(availablePoints) - Number(r.pointsCost));
-      const newRedeemed = Number(redeemedPoints) + Number(r.pointsCost);
-
-      await gqlClient.graphql({
-        query: BALANCE_SET,
+      // ✅ CHAMAR MUTATION ÚNICO QUE FAZ: redemption(PENDING)+ledger+update balance
+      const res: any = await gqlClient.graphql({
+        query: M_MONGO_REDEEM,
         variables: {
-          userId: balanceUserId,
-          availablePoints: newAvailable,
-          redeemedPoints: newRedeemed,
-          // backend deve gerar redemption+ledger em PENDING (fluxo do admin)
-          reason: `REDEEM:${r.code}:${r.pointsCost}`,
+          input: {
+            userId,              // Cognito sub
+            rewardId: reward.id, // id do reward (MongoReward.id)
+            rewardCode: reward.code,
+            pointsCost: reward.pointsCost,
+            lang: lang.toLowerCase(),
+          },
         },
       });
 
-      // Atualiza UI
-      setAvailablePoints(newAvailable);
-      setRedeemedPoints(newRedeemed);
+      const out = res?.data?.mongoRewardsRedeem;
+      if (!out?.ok) throw new Error(out?.message || "Redeem failed");
+
+      // atualiza UI conforme retorno do backend (fonte da verdade)
+      setAvailablePoints(safeNum(out.availablePoints, 0));
+      setRedeemedPoints(safeNum(out.redeemedPoints, 0));
+      if (out.levelId) setLevelId(String(out.levelId).toUpperCase());
     } catch (e: any) {
-      setError(e?.message || "Falha ao resgatar");
+      console.error(e);
+      setError(e?.errors?.[0]?.message || e?.message || "Erro ao resgatar");
     } finally {
-      setSavingId(null);
+      setRedeemingId(null);
     }
   }
 
-  // ===== Styles (mantém padrão do protótipo) =====
-  const page: React.CSSProperties = { minHeight: "100vh", background: "#f6f7f9" };
-  const header: React.CSSProperties = {
-    position: "sticky",
-    top: 0,
-    zIndex: 10,
-    background: "#fff",
-    borderBottom: "1px solid rgba(0,0,0,.06)",
-  };
-  const headerInner: React.CSSProperties = {
-    maxWidth: 1300,
-    margin: "0 auto",
-    padding: "18px 18px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-    flexWrap: "wrap",
-  };
-  const brand: React.CSSProperties = { fontWeight: 900, fontSize: 18, color: "#111827" };
-  const levelPill: React.CSSProperties = {
-    border: "1px solid rgba(0,0,0,.12)",
-    borderRadius: 999,
-    padding: "8px 14px",
-    background: "#fff",
-    fontWeight: 800,
-    color: "#111827",
-  };
-
-  const main: React.CSSProperties = { maxWidth: 1300, margin: "0 auto", padding: "18px 18px 42px" };
-  const breadcrumbs: React.CSSProperties = { color: "#6b7280", fontSize: 13, marginBottom: 8 };
-
-  const topRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" };
-  const searchWrap: React.CSSProperties = { flex: 1, minWidth: 280 };
-  const search: React.CSSProperties = {
-    width: "100%",
-    height: 44,
-    borderRadius: 12,
-    border: "1px solid rgba(0,0,0,.12)",
-    padding: "0 14px",
-    outline: "none",
-    fontSize: 14,
-    color: "#111827",
-    background: "#fff",
-  };
-
-  const title: React.CSSProperties = { fontSize: 40, fontWeight: 900, margin: "14px 0 6px", color: "#111827" };
-  const subtitle: React.CSSProperties = { color: "#64748b", fontSize: 16, marginBottom: 18 };
-
-  const statsRow: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 };
-  const statCard: React.CSSProperties = {
-    background: "#fff",
-    border: "1px solid rgba(0,0,0,.08)",
-    borderRadius: 16,
-    padding: 16,
-    boxShadow: "0 1px 2px rgba(0,0,0,.06)",
-  };
-  const statLabel: React.CSSProperties = { fontSize: 13, color: "#64748b", marginBottom: 6, fontWeight: 700 };
-  const statValue: React.CSSProperties = { fontSize: 34, color: "#0f172a", fontWeight: 900 };
-
-  const actionsRow: React.CSSProperties = { display: "flex", justifyContent: "flex-end", marginBottom: 8 };
-  const reloadBtn: React.CSSProperties = {
-    border: "1px solid rgba(0,0,0,.12)",
-    background: "#fff",
-    borderRadius: 14,
-    padding: "12px 16px",
-    fontWeight: 900,
-    cursor: "pointer",
-    color: "#111827",
-  };
-
-  const grid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginTop: 10 };
-
-  const card: React.CSSProperties = {
-    background: "#fff",
-    border: "1px solid rgba(0,0,0,.08)",
-    borderRadius: 18,
-    overflow: "hidden",
-    boxShadow: "0 1px 2px rgba(0,0,0,.06)",
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 380,
-  };
-
-  const hero: React.CSSProperties = { height: 150, background: "#0b1220", position: "relative", overflow: "hidden" };
-  const heroImg: React.CSSProperties = { width: "100%", height: "100%", objectFit: "cover", display: "block" };
-  const ptsBadge: React.CSSProperties = {
-    position: "absolute",
-    right: 12,
-    top: 12,
-    background: "rgba(255,255,255,.95)",
-    border: "1px solid rgba(0,0,0,.10)",
-    borderRadius: 999,
-    padding: "6px 10px",
-    fontWeight: 900,
-    color: "#0f172a",
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  };
-  const dot: React.CSSProperties = { width: 10, height: 10, borderRadius: 999, background: "#fbbf24" };
-
-  const body: React.CSSProperties = { padding: 14, display: "flex", flexDirection: "column", gap: 10, flex: 1 };
-  const cardTitle: React.CSSProperties = { fontWeight: 900, fontSize: 18, color: "#0f172a" };
-  const cardDesc: React.CSSProperties = { color: "#64748b", fontSize: 14, lineHeight: 1.35, minHeight: 42 };
-
-  const chips: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
-  const chip: React.CSSProperties = {
-    border: "1px solid rgba(0,0,0,.10)",
-    background: "#f1f5f9",
-    color: "#0f172a",
-    borderRadius: 999,
-    padding: "6px 10px",
-    fontSize: 13,
-    fontWeight: 800,
-  };
-
-  const cardFooter: React.CSSProperties = { padding: 14, display: "flex", gap: 10, alignItems: "center" };
-  const primaryBtn: React.CSSProperties = {
-    flex: 1,
-    border: 0,
-    background: "#0b1220",
-    color: "#fff",
-    borderRadius: 14,
-    padding: "12px 14px",
-    fontWeight: 900,
-    cursor: "pointer",
-  };
-  const disabledBtn: React.CSSProperties = { ...primaryBtn, background: "#cfc7b7", cursor: "not-allowed", color: "#fff" };
-
-  const statusLine: React.CSSProperties = { marginTop: 10, color: "#ef4444", fontWeight: 800 };
-
   return (
-    <div style={page}>
-      {/* Header: mantém layout, pill apenas com o nível */}
-      <div style={header}>
-        <div style={headerInner}>
-          <div style={brand}>Martins Development</div>
-
-          <div style={levelPill}>
-            {t.level}: <b>{(levelId || "NONE").toString().toUpperCase()}</b>
-          </div>
-        </div>
-      </div>
-
-      <div style={main}>
+    <div style={pageWrap}>
+      <div style={container}>
         <div style={topRow}>
+          <div style={crumb}>{get("breadcrumbs")}</div>
+
           <div style={searchWrap}>
-            <div style={breadcrumbs}>{t.breadcrumbs}</div>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t.search}
-              style={search}
-              aria-label={t.search}
-            />
+            <div style={{ position: "relative", width: "100%" }}>
+              <div style={searchIcon}>🔎</div>
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={get("search")} style={searchInput} />
+            </div>
           </div>
 
-          {/* apenas para manter o “look” de idioma no topo (controle real fica no App.tsx) */}
-          <div style={{ height: 36, padding: "0 10px", display: "flex", alignItems: "center", fontWeight: 900, color: "#64748b" }}>
-            {lang}
+          {/* ✅ apenas Level, sem points */}
+          <div style={levelPill}>
+            {get("level")} <span style={{ marginLeft: 6 }}>{levelId || "NONE"}</span>
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={headRow}>
           <div>
-            <div style={title}>{t.rewardsTitle}</div>
-            <div style={subtitle}>{t.rewardsSubtitle}</div>
+            <div style={title}>{get("title")}</div>
+            <div style={subtitle}>{get("subtitle")}</div>
           </div>
 
-          <div style={actionsRow}>
-            <button onClick={reloadAll} style={reloadBtn} disabled={loading || !!savingId}>
-              {t.reload}
-            </button>
-          </div>
+          <button style={reloadBtn} onClick={loadAll} disabled={loading}>
+            {get("reload")}
+          </button>
         </div>
 
-        {/* 4 cards conforme solicitado */}
+        {/* ✅ 4 cards (sem alterar layout padrão) */}
         <div style={statsRow}>
-          <div style={statCard}>
-            <div style={statLabel}>{t.totalPoints}</div>
-            <div style={statValue}>{Number.isFinite(totalPoints) ? totalPoints : 0}</div>
+          <div style={card}>
+            <div style={cardK}>{get("totalPoints")}</div>
+            <div style={cardV}>{loading ? "…" : totalPoints}</div>
           </div>
 
-          <div style={statCard}>
-            <div style={statLabel}>{t.availablePoints}</div>
-            <div style={statValue}>{Number.isFinite(availablePoints) ? availablePoints : 0}</div>
+          <div style={card}>
+            <div style={cardK}>{get("availablePoints")}</div>
+            <div style={cardV}>{loading ? "…" : availablePoints}</div>
           </div>
 
-          <div style={statCard}>
-            <div style={statLabel}>{t.redeemed}</div>
-            <div style={statValue}>{Number.isFinite(redeemedPoints) ? redeemedPoints : 0}</div>
+          <div style={card}>
+            <div style={cardK}>{get("redeemedPoints")}</div>
+            <div style={cardV}>{loading ? "…" : redeemedPoints}</div>
           </div>
 
-          <div style={statCard}>
-            <div style={statLabel}>{t.availableRewards}</div>
-            <div style={statValue}>{filtered.length}</div>
+          <div style={card}>
+            <div style={cardK}>{get("rewardsAvailable")}</div>
+            <div style={cardV}>{loading ? "…" : rewardsAvailable}</div>
           </div>
         </div>
 
-        {error && <div style={statusLine}>{error}</div>}
-
-        {loading ? (
-          <div style={{ color: "#64748b", fontWeight: 800, marginTop: 12 }}>Loading…</div>
-        ) : (
-          <div style={grid}>
-            {filtered.map((r) => {
-              const titleText = pickI18nValue(r.title, lang) || r.code;
-              const descText = pickI18nValue(r.description || null, lang) || "";
-              const canRedeem = availablePoints >= r.pointsCost && !!balanceUserId;
-              const isBusy = savingId === r.id;
-
-              return (
-                <div key={r.id} style={card}>
-                  <div style={hero}>
-                    {r.imageUrl ? (
-                      <img src={r.imageUrl} alt={titleText} style={heroImg} />
-                    ) : (
-                      <div style={{ ...hero, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,.65)", fontWeight: 900 }}>
-                        NO IMAGE
-                      </div>
-                    )}
-
-                    <div style={ptsBadge}>
-                      <span style={dot} />
-                      <span>{r.pointsCost} pts</span>
-                    </div>
-                  </div>
-
-                  <div style={body}>
-                    <div style={cardTitle}>{titleText}</div>
-                    <div style={cardDesc}>{descText}</div>
-
-                    <div style={chips}>
-                      {r.category ? <span style={chip}>{r.category}</span> : null}
-                      {r.deliveryType ? <span style={chip}>{r.deliveryType}</span> : null}
-                      {(r.tags || []).slice(0, 4).map((tg) => (
-                        <span key={tg} style={chip}>
-                          {tg}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div style={cardFooter}>
-                    <button
-                      style={canRedeem ? primaryBtn : disabledBtn}
-                      onClick={() => redeemReward(r)}
-                      disabled={!canRedeem || isBusy || loading}
-                      aria-busy={isBusy}
-                    >
-                      {isBusy ? "…" : canRedeem ? t.redeem : t.insufficient}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+        {error && (
+          <div style={{ marginTop: 14, color: "#DC2626", fontWeight: 900 }}>
+            {get("loadError")}: {error}
           </div>
         )}
 
-        {/* se quiser “load more” no futuro, já tem nextToken */}
-        {!loading && nextToken ? (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
-            <button style={reloadBtn} onClick={() => loadRewards(false)} disabled={!!savingId}>
-              Load more
-            </button>
-          </div>
-        ) : null}
+        <div style={grid}>
+          {filteredRewards.map((r) => {
+            const canRedeem = availablePoints >= r.pointsCost;
+            const img = r.imageUrl || "";
+            const titleTxt = pickI18n(r.title, lang) || r.code;
+            const descTxt = pickI18n(r.description ?? undefined, lang);
+
+            return (
+              <div key={r.id} style={rewardCard}>
+                <div style={imageBox}>
+                  {img ? (
+                    <img
+                      src={img}
+                      alt={titleTxt}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.96 }}
+                      onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+                    />
+                  ) : null}
+
+                  <div style={ptsPill}>
+                    <span style={coin} />
+                    {r.pointsCost} pts
+                  </div>
+                </div>
+
+                <div style={body}>
+                  <div style={rTitle}>{titleTxt}</div>
+                  <div style={rDesc}>{descTxt}</div>
+
+                  <div style={tagRow}>
+                    {(r.tags || []).slice(0, 3).map((tg) => (
+                      <span key={tg} style={tag}>
+                        {tg}
+                      </span>
+                    ))}
+                  </div>
+
+                  <button
+                    style={canRedeem ? btn : btnDisabled}
+                    onClick={() => redeem(r)}
+                    disabled={!canRedeem || !!redeemingId || loading}
+                  >
+                    {redeemingId === r.id ? "…" : canRedeem ? get("redeem") : get("insufficient")}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ height: 24 }} />
       </div>
     </div>
   );
