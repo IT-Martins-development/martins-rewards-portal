@@ -272,9 +272,10 @@ export default function RewardsCRUD({ lang }: Props) {
 
       const raw = resp?.data?.mongoRewardsList?.items ?? [];
       setItems(raw.map(normalizeReward));
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    } finally {
+}     catch (e: any) {
+        const errorMsg = e?.errors?.[0]?.message || e?.message || JSON.stringify(e);
+        setErr(errorMsg);
+      } finally {
       setBusy(false);
     }
   }
@@ -302,7 +303,8 @@ export default function RewardsCRUD({ lang }: Props) {
       setForm(emptyForm());
       setEditingId(null);
     } catch (e: any) {
-      setErr(e?.message ?? String(e));
+      const errorMsg = e?.errors?.[0]?.message || e?.message || JSON.stringify(e);
+      setErr(errorMsg);
     } finally {
       setBusy(false);
     }
@@ -329,7 +331,8 @@ export default function RewardsCRUD({ lang }: Props) {
       setForm(emptyForm());
       setEditingId(null);
     } catch (e: any) {
-      setErr(e?.message ?? String(e));
+      const errorMsg = e?.errors?.[0]?.message || e?.message || JSON.stringify(e);
+      setErr(errorMsg);
     } finally {
       setBusy(false);
     }
@@ -351,7 +354,8 @@ export default function RewardsCRUD({ lang }: Props) {
         setForm(emptyForm());
       }
     } catch (e: any) {
-      setErr(e?.message ?? String(e));
+      const errorMsg = e?.errors?.[0]?.message || e?.message || JSON.stringify(e);
+      setErr(errorMsg);
     } finally {
       setBusy(false);
     }
