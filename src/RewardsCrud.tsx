@@ -485,8 +485,6 @@ export default function RewardsCRUD({ lang }: Props) {
           <img
             src={url!}
             alt={title || "reward"}
-            referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             style={{
               width: "100%",
               height: "100%",
