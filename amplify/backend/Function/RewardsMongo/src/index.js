@@ -841,8 +841,10 @@ async function mongoRewardUpdate(args) {
   const db = await getDb();
   const col = db.collection(REWARDS_COLLECTION);
 
+  // 1. Busca o ID seja na raiz do args ou dentro do input
   const input = args?.input || args || {};
-  const idStr = input?.id;
+  const idStr = args?.id || input?.id; 
+
   if (!isNonEmptyString(idStr)) throw new Error("id is required");
 
   const oid = toObjectIdMaybe(idStr);
@@ -850,6 +852,7 @@ async function mongoRewardUpdate(args) {
 
   const $set = { updatedAt: nowIso() };
 
+  // ... (Mantenha os seus IFs exatamente como estão) ...
   if (input.code != null) $set.code = String(input.code).trim();
   if (input.pointsCost != null) $set.pointsCost = safeNumber(input.pointsCost, 0);
   if (input.deliveryType != null) $set.deliveryType = input.deliveryType;
@@ -863,8 +866,16 @@ async function mongoRewardUpdate(args) {
   if (input.description !== undefined) $set.description = input.description;
 
   const res = await col.findOneAndUpdate(q, { $set }, { returnDocument: "after" });
-  if (!res.value) throw new Error(`Reward not found: ${idStr}`);
-  return mapRewardDoc(res.value, "PT");
+  
+  // 2. Suporta tanto o MongoDB Driver antigo (res.value) quanto o novo (res)
+  const updatedDoc = res?.value || res;
+
+  // Se o documento retornado não tiver _id, o item realmente não foi encontrado
+  if (!updatedDoc || !updatedDoc._id) {
+    throw new Error(`Reward not found: ${idStr}`);
+  }
+
+  return mapRewardDoc(updatedDoc, "PT");
 }
 
 async function mongoRewardDelete(args) {
