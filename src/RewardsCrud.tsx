@@ -320,7 +320,7 @@ export default function RewardsCRUD({ lang }: Props) {
 
       const resp = (await gqlClient.graphql({
         query: MONGO_REWARD_UPDATE,
-        variables: { id: editingId, input: payload },
+        variables: { input: { id: editingId, ...payload } },
       } as any)) as { data?: UpdateResp };
 
       const updated = resp?.data?.mongoRewardUpdate;
@@ -465,7 +465,7 @@ export default function RewardsCRUD({ lang }: Props) {
 
   function renderImagePreview(urlRaw?: string | null, title?: string) {
     const url = normalizeImageUrl(urlRaw);
-    const showImg = !!url && /^https?:\/\//i.test(url);
+    const showImg = !!url && (/^https?:\/\//i.test(url) || url.startsWith("data:image/"));
 
     return (
       <div style={imgBox}>
