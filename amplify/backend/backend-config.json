@@ -42,6 +42,14 @@
           ],
           "category": "function",
           "resourceName": "getOperatorDivergences"
+        },
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "getProjectsStatus"
         }
       ],
       "providerPlugin": "awscloudformation",
@@ -64,6 +72,11 @@
       "service": "Lambda"
     },
     "getOperatorDivergences": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
+    "getProjectsStatus": {
       "build": true,
       "providerPlugin": "awscloudformation",
       "service": "Lambda"
@@ -163,6 +176,30 @@
         {
           "category": "function",
           "resourceName": "getOperatorDivergences"
+        }
+      ]
+    },
+    "AMPLIFY_function_getProjectsStatus_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "getProjectsStatus"
+        }
+      ]
+    },
+    "AMPLIFY_function_getProjectsStatus_mongodbUri": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "getProjectsStatus"
+        }
+      ]
+    },
+    "AMPLIFY_function_getProjectsStatus_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "getProjectsStatus"
         }
       ]
     }

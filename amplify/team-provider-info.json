@@ -31,7 +31,12 @@
           "mongodbUri": "mongodb+srv://martinsventurix:WsHP4jvMeCLIbAwo@prodcluster.ev9b0.mongodb.net/",
           "dbName": "prodcluster",
           "deploymentBucketName": "amplify-martinsrewardsportal-main-661d4-deployment",
-          "s3Key": "amplify-builds/getOperatorDivergences-3461466163615367776c-build.zip"
+          "s3Key": "amplify-builds/getOperatorDivergences-6c4e576d50704e6e4355-build.zip"
+        },
+        "getProjectsStatus": {
+          "mongodbUri": "mongodb+srv://martinsventurix:WsHP4jvMeCLIbAwo@prodcluster.ev9b0.mongodb.net/",
+          "deploymentBucketName": "amplify-martinsrewardsportal-main-661d4-deployment",
+          "s3Key": "amplify-builds/getProjectsStatus-30355447486547754170-build.zip"
         }
       },
       "api": {
