@@ -10,7 +10,7 @@ Amplify.configure({
       }
     }
   }
-}, { libraryOptions: { API: { REST: { headers: async () => ({}) } } } });
+});
 
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
