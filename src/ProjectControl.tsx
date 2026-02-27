@@ -20,7 +20,7 @@ export default function ProjectControl() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      // O nome 'operatorApi' deve estar declarado no seu amplifyInit.ts
+      // O nome 'operatorApi' aqui deve bater com o seu amplifyInit.ts
       const restOperation = get({ apiName: 'operatorApi', path: '/projects-control' });
       const response = await restOperation.response;
       const data: any = await response.body.json();
@@ -78,7 +78,7 @@ export default function ProjectControl() {
       p.StartDatePhase1 || "", p.EndDatePhase1 || "", p.StatusPhase1 || "",
       p.StartDatePhase2 || "", p.EndDatePhase2 || "", p.StatusPhase2 || "",
       p.StartDatePhase3 || "", p.EndDatePhase3 || "", p.StatusPhase3 || "",
-      `"${p.reason || ""}"` // Inclui o campo de justificativa técnica salvo no banco
+      `"${p.reason || ""}"` // Justificativa técnica para auditoria
     ]);
 
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
@@ -111,7 +111,7 @@ export default function ProjectControl() {
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#111827" }}>Controle de Projetos (Master)</h2>
         <div style={{ display: "flex", gap: 10 }}>
           <button style={S.btnGhost} onClick={exportCsv}>Exportar CSV Completo</button>
-          <button style={S.btnPrimary} onClick={fetchProjects}>{loading ? "Carregando..." : "Aplicar"}</button>
+          <button style={S.btnPrimary} onClick={fetchProjects}>{loading ? "A carregar..." : "Aplicar"}</button>
         </div>
       </div>
 
@@ -169,7 +169,7 @@ export default function ProjectControl() {
       {isModalOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ background: "white", padding: 24, borderRadius: 16, width: "100%", maxWidth: 500, color: "#111827" }}>
-            <h3 style={{ marginTop: 0 }}>Nova Justificativa Técnico</h3>
+            <h3 style={{ marginTop: 0 }}>Justificativa Técnico</h3>
             <div style={{ marginBottom: 10, fontSize: 13, fontWeight: "bold" }}>Projeto: {selectedProject?.project?.title || selectedProject?.projectId}</div>
             <textarea style={{ ...S.input, height: 120, padding: 12, marginBottom: 16 }} value={newReason} onChange={e => setNewReason(e.target.value)} placeholder="Descreva o motivo técnico..."/>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
