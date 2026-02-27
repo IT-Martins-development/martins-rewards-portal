@@ -312,3 +312,59 @@ extend type Mutation {
   ): MongoRewardsBalanceSetResult!
     @function(name: "RewardsMongo-${env}")
 }
+# ------------------------------------------------------------
+# Project Control (collection: view_project_status)
+# ------------------------------------------------------------
+
+type MongoProjectControl {
+  projectId: ID!
+  project: MongoProjectDetail
+  county: String
+  majorityOperatorName: String
+  currentPhase: String
+  phaseStatus: String
+  projectStatus: String
+  StatusProject: String
+  daysInPhase: Int
+  daysInProject: Int
+  daysRemaining: Int
+  totalHoldDays: Int
+  projectColor: String
+  phaseExpectedDays: Int
+  permitIssuedDate: String
+  # Campos para o CSV Completo
+  StartDatePhase1: String
+  EndDatePhase1: String
+  StatusPhase1: String
+  StartDatePhase2: String
+  EndDatePhase2: String
+  StatusPhase2: String
+  StartDatePhase3: String
+  EndDatePhase3: String
+  StatusPhase3: String
+  reason: String # Justificativa técnica
+}
+
+type MongoProjectDetail {
+  title: String
+}
+
+type MongoProjectsControlList {
+  items: [MongoProjectControl!]!
+  nextToken: String
+}
+
+# ------------------------------------------------------------
+# Extend Query e Mutation para Projetos
+# ------------------------------------------------------------
+
+extend type Query {
+  mongoProjectsControlList(limit: Int, nextToken: String): MongoProjectsControlList!
+    @function(name: "getProjectsStatus-${env}")
+}
+
+extend type Mutation {
+  # Salva justificativa na collection stausProjects
+  mongoProjectSaveJustification(projectId: ID!, reason: String!): MongoProjectControl
+    @function(name: "getProjectsStatus-${env}")
+}
