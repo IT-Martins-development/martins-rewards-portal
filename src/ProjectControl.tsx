@@ -20,7 +20,7 @@ export default function ProjectControl() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      // Conecta com a REST API oficial d3g2ypezejhh8u
+      // O nome 'operatorApi' deve estar declarado no seu amplifyInit.ts
       const restOperation = get({ apiName: 'operatorApi', path: '/projects-control' });
       const response = await restOperation.response;
       const data: any = await response.body.json();
@@ -54,7 +54,7 @@ export default function ProjectControl() {
     setFilteredProjects(res);
   }, [filters, projects]);
 
-  // --- EXPORTAÇÃO COMPLETA (21 colunas incluindo Justificativas) ---
+  // --- EXPORTAÇÃO COMPLETA (21 colunas + Justificativas) ---
   const exportCsv = () => {
     const headers = [
       "ID", "Projeto", "County", "Operador", "Fase Atual", "P. Status", 
@@ -78,7 +78,7 @@ export default function ProjectControl() {
       p.StartDatePhase1 || "", p.EndDatePhase1 || "", p.StatusPhase1 || "",
       p.StartDatePhase2 || "", p.EndDatePhase2 || "", p.StatusPhase2 || "",
       p.StartDatePhase3 || "", p.EndDatePhase3 || "", p.StatusPhase3 || "",
-      `"${p.reason || ""}"` // Campo de Justificativa técnica
+      `"${p.reason || ""}"` // Inclui o campo de justificativa técnica salvo no banco
     ]);
 
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
@@ -171,7 +171,7 @@ export default function ProjectControl() {
           <div style={{ background: "white", padding: 24, borderRadius: 16, width: "100%", maxWidth: 500, color: "#111827" }}>
             <h3 style={{ marginTop: 0 }}>Nova Justificativa Técnico</h3>
             <div style={{ marginBottom: 10, fontSize: 13, fontWeight: "bold" }}>Projeto: {selectedProject?.project?.title || selectedProject?.projectId}</div>
-            <textarea style={{ ...S.input, height: 120, padding: 12, marginBottom: 16 }} value={newReason} onChange={e => setNewReason(e.target.value)} placeholder="Descreva o motivo técnico do atraso ou hold..."/>
+            <textarea style={{ ...S.input, height: 120, padding: 12, marginBottom: 16 }} value={newReason} onChange={e => setNewReason(e.target.value)} placeholder="Descreva o motivo técnico..."/>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button style={S.btnGhost} onClick={() => setIsModalOpen(false)}>Cancelar</button>
               <button style={S.btnPrimary} onClick={async () => {
