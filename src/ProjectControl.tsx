@@ -1,16 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
 import { Amplify } from 'aws-amplify';
-Amplify.configure({
-  API: {
-    REST: {
-      "operatorApi": {
-        endpoint: "https://d2ti6bqx2tfgyt.execute-api.us-east-2.amazonaws.com/staging",
-        region: "us-east-2"
-      }
-    }
-  }
-});
+
 
 
 export default function ProjectControl() {
@@ -26,6 +17,17 @@ export default function ProjectControl() {
   });
 
   const fetchProjects = async () => {
+
+          Amplify.configure({
+        API: {
+          REST: {
+            "operatorApi": {
+              endpoint: "https://d2ti6bqx2tfgyt.execute-api.us-east-2.amazonaws.com/staging",
+              region: "us-east-2"
+            }
+          }
+        }
+      });
     setLoading(true);
     try {
       const restOperation = get({ apiName: 'operatorApi', path: '/projects-control' });
