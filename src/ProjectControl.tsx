@@ -16,38 +16,34 @@ export default function ProjectControl() {
     title: '', operator: '', color: '', phase: '', globalStatus: '' 
   });
 
-  const fetchProjects = async () => {
+const fetchProjects = async () => {
+  setLoading(true);
+  try {
+    // URL direta do seu staging para ignorar o erro de InvalidApiName
+    const url = "https://d2ti6bqx2tfgyt.execute-api.us-east-2.amazonaws.com/staging/projects-control";
+    
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Erro na requisição");
+    
+    const data = await response.json();
+    const rawList = Array.isArray(data) ? data : (data?.body ? JSON.parse(data.body) : []);
+    
+    // Normalização para garantir que os números apareçam (evita falha de renderização)
+    const normalized = rawList.map((p: any) => ({
+      ...p,
+      daysInPhase: p.daysInPhase?.$numberLong ? parseInt(p.daysInPhase.$numberLong) : (Number(p.daysInPhase) || 0),
+      daysInProject: p.daysInProject?.$numberLong ? parseInt(p.daysInProject.$numberLong) : (Number(p.daysInProject) || 0),
+      daysRemaining: p.daysRemaining?.$numberLong ? parseInt(p.daysRemaining.$numberLong) : (Number(p.daysRemaining) || 0),
+      totalHoldDays: p.totalHoldDays?.$numberLong ? parseInt(p.totalHoldDays.$numberLong) : (Number(p.totalHoldDays) || 0),
+    }));
 
-          Amplify.configure({
-        API: {
-          REST: {
-            "operatorApi": {
-              endpoint: "https://d2ti6bqx2tfgyt.execute-api.us-east-2.amazonaws.com/staging",
-              region: "us-east-2"
-            }
-          }
-        }
-      });
-    setLoading(true);
-    try {
-      const restOperation = get({ apiName: 'operatorApi', path: '/projects-control' });
-      const response = await restOperation.response;
-      const data: any = await response.body.json();
-      const rawList = Array.isArray(data) ? data : (data?.body ? JSON.parse(data.body) : []);
-      
-        const normalized = rawList.map((p: any) => ({
-        ...p,
-        daysInPhase: p.daysInPhase?.$numberLong ? parseInt(p.daysInPhase.$numberLong) : (Number(p.daysInPhase) || 0),
-        daysInProject: p.daysInProject?.$numberLong ? parseInt(p.daysInProject.$numberLong) : (Number(p.daysInProject) || 0),
-        daysRemaining: p.daysRemaining?.$numberLong ? parseInt(p.daysRemaining.$numberLong) : (Number(p.daysRemaining) || 0),
-        totalHoldDays: p.totalHoldDays?.$numberLong ? parseInt(p.totalHoldDays.$numberLong) : (Number(p.totalHoldDays) || 0),
-        phaseExpectedDays: p.phaseExpectedDays?.$numberLong ? parseInt(p.phaseExpectedDays.$numberLong) : (Number(p.phaseExpectedDays) || 0),
-        }));
-
-      setProjects(normalized);
-    } catch (error) { console.error("Erro:", error); }
-    finally { setLoading(false); }
-  };
+    setProjects(normalized);
+  } catch (error) { 
+    console.error("Erro ao carregar projetos:", error); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
   useEffect(() => { void fetchProjects(); }, []);
 
