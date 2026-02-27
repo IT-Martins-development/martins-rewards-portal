@@ -1,0 +1,15 @@
+{
+  "staging": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-martinsrewardsportal-staging-12e55-authRole",
+      "UnauthRoleArn": "arn:aws:iam::225989369521:role/amplify-martinsrewardsportal-staging-12e55-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::225989369521:role/amplify-martinsrewardsportal-staging-12e55-authRole",
+      "Region": "us-east-2",
+      "DeploymentBucketName": "amplify-martinsrewardsportal-staging-12e55-deployment",
+      "UnauthRoleName": "amplify-martinsrewardsportal-staging-12e55-unauthRole",
+      "StackName": "amplify-martinsrewardsportal-staging-12e55",
+      "StackId": "arn:aws:cloudformation:us-east-2:225989369521:stack/amplify-martinsrewardsportal-staging-12e55/ba46cbe0-06c2-11f1-a1d9-02f950f9f059",
+      "AmplifyAppId": "d3g2ypezejhh8u"
+    }
+  }
+}
