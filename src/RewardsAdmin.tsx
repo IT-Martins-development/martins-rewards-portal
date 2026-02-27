@@ -1,9 +1,10 @@
 import React, { useMemo } from "react";
 import type { Lang } from "./App";
 
-type Props = { lang: Lang };
+// Adicionei um onClick opcional na prop para você ligar com a sua navegação
+type Props = { lang: Lang; onNavigateToProjects?: () => void };
 
-export default function RewardsAdmin({ lang }: Props) {
+export default function RewardsAdmin({ lang, onNavigateToProjects }: Props) {
   const t = useMemo(() => {
     const dict = {
       pt: {
@@ -11,18 +12,21 @@ export default function RewardsAdmin({ lang }: Props) {
         subtitle:
           "Aqui você pode cadastrar e gerenciar recompensas, aprovar resgates e acompanhar relatórios.",
         hint: "Use o menu à esquerda para navegar.",
+        btnProject: "Acessar Controle de Projetos",
       },
       en: {
         title: "Welcome to Martins Rewards Program",
         subtitle:
           "Here you can manage rewards, approvals, and reports.",
         hint: "Use the left menu to navigate.",
+        btnProject: "Access Project Control",
       },
       es: {
         title: "Bienvenido al Programa de Rewards de Martins",
         subtitle:
           "Aquí puedes administrar recompensas, aprobaciones y reportes.",
         hint: "Usa el menú de la izquierda para navegar.",
+        btnProject: "Acceder al Control de Proyectos",
       },
     } as const;
     return dict[lang] ?? dict.pt;
@@ -66,6 +70,21 @@ export default function RewardsAdmin({ lang }: Props) {
     fontSize: 13,
   };
 
+  // --- NOVO ESTILO PARA O BOTÃO ---
+  const BtnAction: React.CSSProperties = {
+    marginTop: 20,
+    display: "block",
+    padding: "10px 16px",
+    borderRadius: 8,
+    background: "#4b3c23",
+    color: "#fff",
+    border: "none",
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: "pointer",
+    width: "fit-content",
+  };
+
   const Right: React.CSSProperties = {
     width: 340,
     borderRadius: 16,
@@ -107,6 +126,11 @@ export default function RewardsAdmin({ lang }: Props) {
           <h2 style={Title}>{t.title}</h2>
           <div style={Sub}>{t.subtitle}</div>
           <div style={Hint}>{t.hint}</div>
+          
+          {/* --- NOVO BOTÃO DE ACESSO RÁPIDO --- */}
+          <button style={BtnAction} onClick={onNavigateToProjects}>
+            {t.btnProject} →
+          </button>
         </div>
 
         <div style={Right}>
@@ -119,6 +143,8 @@ export default function RewardsAdmin({ lang }: Props) {
               <div>• Rewards (CRUD): criar/editar recompensas</div>
               <div>• Aprovações: aprovar/rejeitar resgates</div>
               <div>• Relatório: visualizar e exportar resultados</div>
+              {/* --- NOVA LINHA NA LISTA DA DIREITA --- */}
+              <div>• Controle de Projetos: gestão de prazos e fases</div>
             </div>
           </div>
 
