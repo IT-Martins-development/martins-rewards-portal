@@ -16,10 +16,10 @@
     "s3Key": {
       "Type": "String"
     },
-    "mongoDb": {
+    "mongodbUri": {
       "Type": "String"
     },
-    "mongoUri": {
+    "dbName": {
       "Type": "String"
     }
   },
@@ -53,12 +53,12 @@
         "FunctionName": {
           "Fn::If": [
             "ShouldNotCreateEnvResources",
-            "RewardsMongo",
+            "getOperatorDivergences",
             {
               "Fn::Join": [
                 "",
                 [
-                  "RewardsMongo",
+                  "getOperatorDivergences",
                   "-",
                   {
                     "Ref": "env"
@@ -76,11 +76,11 @@
             "REGION": {
               "Ref": "AWS::Region"
             },
-            "MONGO_DB": {
-              "Ref": "mongoDb"
+            "MONGODB_URI": {
+              "Ref": "mongodbUri"
             },
-            "MONGO_URI": {
-              "Ref": "mongoUri"
+            "DB_NAME": {
+              "Ref": "dbName"
             }
           }
         },
@@ -101,12 +101,12 @@
         "RoleName": {
           "Fn::If": [
             "ShouldNotCreateEnvResources",
-            "martinsrewardsLambdaRole4379bef2",
+            "martinsrewardsportalLambdaRole85704b5b",
             {
               "Fn::Join": [
                 "",
                 [
-                  "martinsrewardsLambdaRole4379bef2",
+                  "martinsrewardsportalLambdaRole85704b5b",
                   "-",
                   {
                     "Ref": "env"

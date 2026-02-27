@@ -32,6 +32,20 @@
       },
       "providerPlugin": "awscloudformation",
       "service": "AppSync"
+    },
+    "operatorApi": {
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "getOperatorDivergences"
+        }
+      ],
+      "providerPlugin": "awscloudformation",
+      "service": "API Gateway"
     }
   },
   "auth": {
@@ -45,6 +59,11 @@
   },
   "function": {
     "RewardsMongo": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
+    "getOperatorDivergences": {
       "build": true,
       "providerPlugin": "awscloudformation",
       "service": "Lambda"
@@ -112,6 +131,38 @@
         {
           "category": "function",
           "resourceName": "RewardsMongo"
+        }
+      ]
+    },
+    "AMPLIFY_function_getOperatorDivergences_dbName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "getOperatorDivergences"
+        }
+      ]
+    },
+    "AMPLIFY_function_getOperatorDivergences_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "getOperatorDivergences"
+        }
+      ]
+    },
+    "AMPLIFY_function_getOperatorDivergences_mongodbUri": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "getOperatorDivergences"
+        }
+      ]
+    },
+    "AMPLIFY_function_getOperatorDivergences_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "getOperatorDivergences"
         }
       ]
     }
