@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
+import { Amplify } from 'aws-amplify';
+Amplify.configure({
+  API: {
+    REST: {
+      "operatorApi": {
+        endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging", 
+        region: "us-east-2"
+      }
+    }
+  }
+}, { libraryOptions: { API: { REST: { headers: async () => ({}) } } } });
 
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
