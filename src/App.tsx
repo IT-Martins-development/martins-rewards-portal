@@ -13,13 +13,16 @@ import RewardsApprovals from "./RewardsApprovals";
 import RewardsReport from "./RewardsReport";
 import RewardsBalancesReport from "./RewardsBalancesReport";
 import RewardsUser from "./RewardsUser";
+// 1. IMPORTAMOS A NOSSA NOVA TELA AQUI:
+import ProjectControl from "./ProjectControl"; 
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
 Amplify.configure(awsExports);
 
-type Page = "crud" | "approvals" | "report" | "balances";
+// 2. ADICIONAMOS "projects" AQUI NOS TIPOS DE PÁGINA:
+type Page = "crud" | "approvals" | "report" | "balances" | "projects";
 type Role = "ADMIN" | "INVESTOR" | "NONE";
 
 const shell: React.CSSProperties = {
@@ -281,6 +284,11 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           <button style={page === "balances" ? btnActive : btn} onClick={() => setPage("balances")}>
             Saldos
           </button>
+
+          {/* 3. CRIAMOS O NOVO BOTÃO NO MENU LATERAL: */}
+          <button style={page === "projects" ? btnActive : btn} onClick={() => setPage("projects")}>
+            Projetos
+          </button>
         </aside>
 
         <main style={contentWrap}>
@@ -295,6 +303,9 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {page === "approvals" && <RewardsApprovals lang={lang} />}
           {page === "report" && <RewardsReport lang={langLabel} />}
           {page === "balances" && <RewardsBalancesReport lang={langLabel} />}
+          
+          {/* 4. DIZEMOS PARA O REACT RENDERIZAR A TELA AQUI: */}
+          {page === "projects" && <ProjectControl />}
         </main>
       </div>
     </div>
