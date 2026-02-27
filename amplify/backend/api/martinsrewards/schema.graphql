@@ -1,0 +1,314 @@
+# ------------------------------------------------------------
+# Core Models (Amplify @model)
+# ------------------------------------------------------------
+
+type Reward
+  @model
+  @auth(
+    rules: [
+      { allow: groups, groups: ["AdminRewards"] }
+      { allow: private, operations: [read] }
+    ]
+  ) {
+  id: ID!
+  title: String!
+  description: String
+  pointsCost: Int!
+  isActive: Boolean!
+  imageUrl: AWSURL
+}
+
+type UserRewardBalance
+  @model
+  @auth(rules: [{ allow: public, provider: apiKey }]) {
+  id: ID!
+  userId: ID!
+  pointsBalance: Int!
+  updatedAt: AWSDateTime
+}
+
+type RewardRedemption
+  @model
+  @auth(
+    rules: [
+      { allow: groups, groups: ["AdminRewards"] }
+      { allow: owner, ownerField: "userId", identityClaim: "sub", operations: [create, read] }
+    ]
+  ) {
+  id: ID!
+  userId: ID
+  rewardId: ID!
+  pointsSpent: Int!
+  status: RedemptionStatus!
+  createdAt: AWSDateTime
+}
+
+enum RedemptionStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELED
+}
+
+# ------------------------------------------------------------
+# Mongo Rewards (collection: rewards) - via Lambda RewardsMongo
+# ------------------------------------------------------------
+
+type MongoReward {
+  id: ID!
+  code: String!
+  title: MongoI18n!
+  description: MongoI18n
+  category: String
+  tags: [String!]
+  pointsCost: Int!
+  imageUrl: String
+  deliveryType: String! # EMAIL | PICKUP | SHIPPING (validação na Lambda)
+  active: Boolean!
+  offerStartAt: AWSDateTime
+  offerEndAt: AWSDateTime
+  createdAt: AWSDateTime
+  updatedAt: AWSDateTime
+  createdBy: String
+}
+
+type MongoI18n {
+  pt: String
+  en: String
+  es: String
+}
+
+input MongoI18nInput {
+  pt: String
+  en: String
+  es: String
+}
+
+input MongoRewardInput {
+  code: String!
+  title: MongoI18nInput!
+  description: MongoI18nInput
+  category: String
+  tags: [String!]
+  pointsCost: Int!
+  imageUrl: String
+  imageKey: String
+  deliveryType: String!
+  active: Boolean!
+  offerStartAt: AWSDateTime
+  offerEndAt: AWSDateTime
+}
+
+input MongoRewardUpdateInput {
+  id: ID!
+  code: String
+  title: MongoI18nInput
+  description: MongoI18nInput
+  category: String
+  tags: [String!]
+  pointsCost: Int
+  imageUrl: String
+  imageKey: String
+  deliveryType: String
+  active: Boolean
+  offerStartAt: AWSDateTime
+  offerEndAt: AWSDateTime
+}
+
+type MongoRewardsList {
+  items: [MongoReward!]!
+  nextToken: String
+}
+
+
+# ------------------------------------------------------------
+# Mongo Reward Redemptions (collection: rewards_redemptions) - via Lambda RewardsMongo
+# ------------------------------------------------------------
+
+type MongoRewardRedemption {
+  id: ID!
+  userId: String
+  rewardCode: String
+  pointsCost: Int
+  status: String
+  delivery: AWSJSON
+  clientRequestId: String
+  createdAt: AWSDateTime
+  updatedAt: AWSDateTime
+  createdBy: String
+  updatedBy: String
+  userName: String
+}
+
+type MongoRewardRedemptionsList {
+  items: [MongoRewardRedemption!]!
+  nextToken: String
+}
+
+# ------------------------------------------------------------
+# Attach resolvers to Lambda (Amplify Gen1)
+# IMPORTANT: use extend type Query/Mutation to avoid conflicts
+# ------------------------------------------------------------
+
+# Base types (needed because we use `extend type ...`)
+type Query {
+#  _empty: String
+  getPublicUrl(key: String!): PresignedGet
+   @function(name: "RewardsMongo-${env}")
+}
+
+type Mutation {
+  _noop: String
+    presignUpload(
+    key: String!
+    contentType: String
+  ): PresignedUpload
+    @function(name: "RewardsMongo-${env}")
+}
+
+extend type Query {
+  mongoRewardGet(id: ID!): MongoReward
+    @function(name: "RewardsMongo-${env}")
+
+  mongoRewardsList(
+    limit: Int
+    nextToken: String
+    activeOnly: Boolean
+  ): MongoRewardsList
+    @function(name: "RewardsMongo-${env}")
+  mongoRewardRedemptionsList(
+    status: String
+    limit: Int
+    nextToken: String
+  ): MongoRewardRedemptionsList
+    @function(name: "RewardsMongo-${env}")
+
+}
+
+extend type Mutation {
+  mongoRewardCreate(input: MongoRewardInput!): MongoReward!
+    @function(name: "RewardsMongo-${env}")
+
+  mongoRewardUpdate(input: MongoRewardUpdateInput!): MongoReward!
+    @function(name: "RewardsMongo-${env}")
+
+  mongoRewardDelete(id: ID!): Boolean!
+    @function(name: "RewardsMongo-${env}")
+  mongoRewardRedemptionUpdateStatus(id: ID!, status: String!): MongoRewardRedemption
+    @function(name: "RewardsMongo-${env}")
+
+}
+############################
+# S3 – Presigned URLs
+############################
+
+type PresignedUpload {
+  key: String!
+  uploadUrl: AWSURL!
+  expiresIn: Int
+}
+
+type PresignedGet {
+  url: AWSURL!
+  expiresIn: Int
+}
+
+############################
+# Mongo Users (collection: users) - via Lambda RewardsMongo
+############################
+
+type MongoUser {
+  _id: ID!
+  fullName: String
+}
+
+type MongoUsersConnection {
+  items: [MongoUser!]!
+  nextToken: String
+}
+
+extend type Query {
+  mongoUsersList(limit: Int, nextToken: String): MongoUsersConnection!
+    @function(name: "RewardsMongo-${env}")
+}
+
+type MongoRewardsLedgerReportItem {
+  id: ID!
+  userId: String
+  rewardId: String
+  pointsSpent: Int
+  status: String
+  createdAt: AWSDateTime
+  updatedAt: AWSDateTime
+
+  rewardName: String
+  deliveryType: String
+
+  userName: String
+  userEmail: String
+  userPhone: String
+  userType: String
+}
+
+type MongoRewardsLedgerReportConnection {
+  items: [MongoRewardsLedgerReportItem!]!
+  nextToken: String
+}
+
+extend type Query {
+  mongoRewardsLedgerReport(
+    from: AWSDateTime
+    to: AWSDateTime
+    statuses: [String]
+    limit: Int
+    nextToken: String
+    lang: String
+  ): MongoRewardsLedgerReportConnection!
+    @function(name: "RewardsMongo-${env}")
+}
+
+type MongoRewardsBalancesList {
+  items: [MongoRewardsBalanceRow!]!
+  nextToken: String
+}
+
+type MongoRewardsBalanceRow {
+  userId: ID!
+  userName: String
+  userType: String
+  userEmail: String
+  userPhone: String
+  availablePoints: Int!
+  redeemedPoints: Int!
+  updatedAt: AWSDateTime
+}
+
+type MongoRewardsBalanceSetResult {
+  ok: Boolean!
+  message: String
+  userId: String!
+  availablePoints: Int!
+  redeemedPoints: Int!
+  totalPoints: Int!
+  updatedAt: AWSDateTime
+}
+extend type Query {
+  mongoRewardsBalancesList(
+    limit: Int
+    nextToken: String
+    name: String
+    userType: String
+  ): MongoRewardsBalancesList!
+    @function(name: "RewardsMongo-${env}")
+}
+
+extend type Mutation {
+  mongoRewardsBalanceSet(
+    userId: ID!
+    availablePoints: Int
+    redeemedPoints: Int
+    reason: String
+  ): MongoRewardsBalanceSetResult!
+    @function(name: "RewardsMongo-${env}")
+}

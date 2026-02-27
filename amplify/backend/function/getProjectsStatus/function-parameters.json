@@ -1,0 +1,9 @@
+{
+  "lambdaLayers": [],
+  "environmentVariableList": [
+    {
+      "cloudFormationParameterName": "mongodbUri",
+      "environmentVariableName": "MONGODB_URI"
+    }
+  ]
+}
