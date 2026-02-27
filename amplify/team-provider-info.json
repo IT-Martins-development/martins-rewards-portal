@@ -1,4 +1,50 @@
 {
+  "staging": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-martinsrewardsportal-staging-a92bc-authRole",
+      "UnauthRoleArn": "arn:aws:iam::225989369521:role/amplify-martinsrewardsportal-staging-a92bc-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::225989369521:role/amplify-martinsrewardsportal-staging-a92bc-authRole",
+      "Region": "us-east-2",
+      "DeploymentBucketName": "amplify-martinsrewardsportal-staging-a92bc-deployment",
+      "UnauthRoleName": "amplify-martinsrewardsportal-staging-a92bc-unauthRole",
+      "StackName": "amplify-martinsrewardsportal-staging-a92bc",
+      "StackId": "arn:aws:cloudformation:us-east-2:225989369521:stack/amplify-martinsrewardsportal-staging-a92bc/cabf05b0-0784-11f1-bac0-06c67ef45371",
+      "AmplifyAppId": "d2ti6bqx2tfgyt"
+    },
+    "categories": {
+      "auth": {
+        "martinsrewards69c1614b": {
+          "userPoolId": "us-east-2_J1tQgVm42",
+          "userPoolName": "Martins-01",
+          "webClientId": "43rdma1om3vhmovk5hdr7desr2",
+          "nativeClientId": "43rdma1om3vhmovk5hdr7desr2"
+        }
+      },
+      "function": {
+        "RewardsMongo": {
+          "mongoDb": "martins",
+          "mongoUri": "mongodb+srv://martinsventurix:WsHP4jvMeCLIbAwo@prodcluster.ev9b0.mongodb.net/",
+          "deploymentBucketName": "amplify-martinsrewardsportal-staging-a92bc-deployment",
+          "s3Key": "amplify-builds/RewardsMongo-4b4c4476687150364e64-build.zip"
+        },
+        "getOperatorDivergences": {
+          "mongodbUri": "mongodb+srv://martinsventurix:WsHP4jvMeCLIbAwo@prodcluster.ev9b0.mongodb.net/",
+          "dbName": "mongodb+srv://martinsventurix:WsHP4jvMeCLIbAwo@prodcluster.ev9b0.mongodb.net/",
+          "deploymentBucketName": "amplify-martinsrewardsportal-staging-a92bc-deployment",
+          "s3Key": "amplify-builds/getOperatorDivergences-6c4e576d50704e6e4355-build.zip"
+        },
+        "getProjectsStatus": {
+          "mongodbUri": "mongodb+srv://martinsventurix:WsHP4jvMeCLIbAwo@prodcluster.ev9b0.mongodb.net/",
+          "deploymentBucketName": "amplify-martinsrewardsportal-staging-a92bc-deployment",
+          "s3Key": "amplify-builds/getProjectsStatus-30355447486547754170-build.zip"
+        }
+      },
+      "api": {
+        "martinsrewards": {},
+        "operatorApi": {}
+      }
+    }
+  },
   "main": {
     "awscloudformation": {
       "AuthRoleName": "amplify-martinsrewardsportal-main-661d4-authRole",

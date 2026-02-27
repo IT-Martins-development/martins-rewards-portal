@@ -202,6 +202,43 @@ export const mongoRewardsBalancesList = /* GraphQL */ `query MongoRewardsBalance
   APITypes.MongoRewardsBalancesListQueryVariables,
   APITypes.MongoRewardsBalancesListQuery
 >;
+export const mongoProjectsControlList = /* GraphQL */ `query MongoProjectsControlList($limit: Int, $nextToken: String) {
+  mongoProjectsControlList(limit: $limit, nextToken: $nextToken) {
+    items {
+      projectId
+      county
+      majorityOperatorName
+      currentPhase
+      phaseStatus
+      projectStatus
+      StatusProject
+      daysInPhase
+      daysInProject
+      daysRemaining
+      totalHoldDays
+      projectColor
+      phaseExpectedDays
+      permitIssuedDate
+      StartDatePhase1
+      EndDatePhase1
+      StatusPhase1
+      StartDatePhase2
+      EndDatePhase2
+      StatusPhase2
+      StartDatePhase3
+      EndDatePhase3
+      StatusPhase3
+      reason
+      __typename
+    }
+    nextToken
+    __typename
+  }
+}
+` as GeneratedQuery<
+  APITypes.MongoProjectsControlListQueryVariables,
+  APITypes.MongoProjectsControlListQuery
+>;
 export const getReward = /* GraphQL */ `query GetReward($id: ID!) {
   getReward(id: $id) {
     id

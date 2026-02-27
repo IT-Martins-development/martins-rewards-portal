@@ -146,6 +146,43 @@ export const mongoRewardsBalanceSet = /* GraphQL */ `mutation MongoRewardsBalanc
   APITypes.MongoRewardsBalanceSetMutationVariables,
   APITypes.MongoRewardsBalanceSetMutation
 >;
+export const mongoProjectSaveJustification = /* GraphQL */ `mutation MongoProjectSaveJustification($projectId: ID!, $reason: String!) {
+  mongoProjectSaveJustification(projectId: $projectId, reason: $reason) {
+    projectId
+    project {
+      title
+      __typename
+    }
+    county
+    majorityOperatorName
+    currentPhase
+    phaseStatus
+    projectStatus
+    StatusProject
+    daysInPhase
+    daysInProject
+    daysRemaining
+    totalHoldDays
+    projectColor
+    phaseExpectedDays
+    permitIssuedDate
+    StartDatePhase1
+    EndDatePhase1
+    StatusPhase1
+    StartDatePhase2
+    EndDatePhase2
+    StatusPhase2
+    StartDatePhase3
+    EndDatePhase3
+    StatusPhase3
+    reason
+    __typename
+  }
+}
+` as GeneratedMutation<
+  APITypes.MongoProjectSaveJustificationMutationVariables,
+  APITypes.MongoProjectSaveJustificationMutation
+>;
 export const createReward = /* GraphQL */ `mutation CreateReward(
   $input: CreateRewardInput!
   $condition: ModelRewardConditionInput

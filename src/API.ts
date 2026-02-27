@@ -99,6 +99,40 @@ export type MongoRewardsBalanceSetResult = {
   updatedAt?: string | null,
 };
 
+export type MongoProjectControl = {
+  __typename: "MongoProjectControl",
+  projectId: string,
+  project?: MongoProjectDetail | null,
+  county?: string | null,
+  majorityOperatorName?: string | null,
+  currentPhase?: string | null,
+  phaseStatus?: string | null,
+  projectStatus?: string | null,
+  StatusProject?: string | null,
+  daysInPhase?: number | null,
+  daysInProject?: number | null,
+  daysRemaining?: number | null,
+  totalHoldDays?: number | null,
+  projectColor?: string | null,
+  phaseExpectedDays?: number | null,
+  permitIssuedDate?: string | null,
+  StartDatePhase1?: string | null,
+  EndDatePhase1?: string | null,
+  StatusPhase1?: string | null,
+  StartDatePhase2?: string | null,
+  EndDatePhase2?: string | null,
+  StatusPhase2?: string | null,
+  StartDatePhase3?: string | null,
+  EndDatePhase3?: string | null,
+  StatusPhase3?: string | null,
+  reason?: string | null,
+};
+
+export type MongoProjectDetail = {
+  __typename: "MongoProjectDetail",
+  title?: string | null,
+};
+
 export type CreateRewardInput = {
   id?: string | null,
   title: string,
@@ -388,6 +422,12 @@ export type MongoRewardsBalanceRow = {
   updatedAt?: string | null,
 };
 
+export type MongoProjectsControlList = {
+  __typename: "MongoProjectsControlList",
+  items:  Array<MongoProjectControl >,
+  nextToken?: string | null,
+};
+
 export type ModelRewardFilterInput = {
   id?: ModelIDInput | null,
   title?: ModelStringInput | null,
@@ -666,6 +706,45 @@ export type MongoRewardsBalanceSetMutation = {
     totalPoints: number,
     updatedAt?: string | null,
   },
+};
+
+export type MongoProjectSaveJustificationMutationVariables = {
+  projectId: string,
+  reason: string,
+};
+
+export type MongoProjectSaveJustificationMutation = {
+  mongoProjectSaveJustification?:  {
+    __typename: "MongoProjectControl",
+    projectId: string,
+    project?:  {
+      __typename: "MongoProjectDetail",
+      title?: string | null,
+    } | null,
+    county?: string | null,
+    majorityOperatorName?: string | null,
+    currentPhase?: string | null,
+    phaseStatus?: string | null,
+    projectStatus?: string | null,
+    StatusProject?: string | null,
+    daysInPhase?: number | null,
+    daysInProject?: number | null,
+    daysRemaining?: number | null,
+    totalHoldDays?: number | null,
+    projectColor?: string | null,
+    phaseExpectedDays?: number | null,
+    permitIssuedDate?: string | null,
+    StartDatePhase1?: string | null,
+    EndDatePhase1?: string | null,
+    StatusPhase1?: string | null,
+    StartDatePhase2?: string | null,
+    EndDatePhase2?: string | null,
+    StatusPhase2?: string | null,
+    StartDatePhase3?: string | null,
+    EndDatePhase3?: string | null,
+    StatusPhase3?: string | null,
+    reason?: string | null,
+  } | null,
 };
 
 export type CreateRewardMutationVariables = {
@@ -1000,6 +1079,45 @@ export type MongoRewardsBalancesListQuery = {
       availablePoints: number,
       redeemedPoints: number,
       updatedAt?: string | null,
+    } >,
+    nextToken?: string | null,
+  },
+};
+
+export type MongoProjectsControlListQueryVariables = {
+  limit?: number | null,
+  nextToken?: string | null,
+};
+
+export type MongoProjectsControlListQuery = {
+  mongoProjectsControlList:  {
+    __typename: "MongoProjectsControlList",
+    items:  Array< {
+      __typename: "MongoProjectControl",
+      projectId: string,
+      county?: string | null,
+      majorityOperatorName?: string | null,
+      currentPhase?: string | null,
+      phaseStatus?: string | null,
+      projectStatus?: string | null,
+      StatusProject?: string | null,
+      daysInPhase?: number | null,
+      daysInProject?: number | null,
+      daysRemaining?: number | null,
+      totalHoldDays?: number | null,
+      projectColor?: string | null,
+      phaseExpectedDays?: number | null,
+      permitIssuedDate?: string | null,
+      StartDatePhase1?: string | null,
+      EndDatePhase1?: string | null,
+      StatusPhase1?: string | null,
+      StartDatePhase2?: string | null,
+      EndDatePhase2?: string | null,
+      StatusPhase2?: string | null,
+      StartDatePhase3?: string | null,
+      EndDatePhase3?: string | null,
+      StatusPhase3?: string | null,
+      reason?: string | null,
     } >,
     nextToken?: string | null,
   },
