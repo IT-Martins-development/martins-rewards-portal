@@ -19,7 +19,22 @@ import ProjectControl from "./ProjectControl";
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
-Amplify.configure(awsExports);
+Amplify.configure({
+  ...awsExports, 
+  Auth: {
+    Cognito: {
+      userPoolId: 'us-east-2_J1tQgVm42',
+      userPoolClientId: '43rdma1om3vhmovk5hdr7desr2'
+    }
+  },
+  API: {
+    GraphQL: {
+      endpoint: 'https://wnpqbka2h5d3lfi3xznvmd4tcq.appsync-api.us-east-2.amazonaws.com/graphql',
+      region: 'us-east-2',
+      defaultAuthMode: 'userPool'
+    }
+  }
+});
 
 // 2. ADICIONAMOS "projects" AQUI NOS TIPOS DE PÁGINA:
 type Page = "crud" | "approvals" | "report" | "balances" | "projects";
