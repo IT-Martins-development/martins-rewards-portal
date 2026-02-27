@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { get, post } from 'aws-amplify/api';
 import { Amplify } from 'aws-amplify';
-
-
 
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
@@ -16,37 +13,41 @@ export default function ProjectControl() {
     title: '', operator: '', color: '', phase: '', globalStatus: '' 
   });
 
-const fetchProjects = async () => {
-  setLoading(true);
-  try {
-    // URL direta do seu staging para ignorar o erro de InvalidApiName
-    const url = "https://d2ti6bqx2tfgyt.execute-api.us-east-2.amazonaws.com/staging/projects-control";
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Erro na requisição");
-    
-    const data = await response.json();
-    const rawList = Array.isArray(data) ? data : (data?.body ? JSON.parse(data.body) : []);
-    
-    // Normalização para garantir que os números apareçam (evita falha de renderização)
-    const normalized = rawList.map((p: any) => ({
-      ...p,
-      daysInPhase: p.daysInPhase?.$numberLong ? parseInt(p.daysInPhase.$numberLong) : (Number(p.daysInPhase) || 0),
-      daysInProject: p.daysInProject?.$numberLong ? parseInt(p.daysInProject.$numberLong) : (Number(p.daysInProject) || 0),
-      daysRemaining: p.daysRemaining?.$numberLong ? parseInt(p.daysRemaining.$numberLong) : (Number(p.daysRemaining) || 0),
-      totalHoldDays: p.totalHoldDays?.$numberLong ? parseInt(p.totalHoldDays.$numberLong) : (Number(p.totalHoldDays) || 0),
-    }));
+  // --- BUSCA DE DADOS (VIA FETCH NATIVO PARA EVITAR ERRO DE API NAME) ---
+  const fetchProjects = async () => {
+    setLoading(true);
+    try {
+      // URL direta do seu staging para garantir funcionamento em produção
+      const url = "https://d2ti6bqx2tfgyt.execute-api.us-east-2.amazonaws.com/staging/projects-control";
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Erro na requisição");
+      
+      const data = await response.json();
+      // Trata retorno direto ou dentro de .body (padrão Lambda)
+      const rawList = Array.isArray(data) ? data : (data?.body ? JSON.parse(data.body) : []);
+      
+      // Normalização de tipos Long do MongoDB e tratamento de números
+      const normalized = rawList.map((p: any) => ({
+        ...p,
+        daysInPhase: p.daysInPhase?.$numberLong ? parseInt(p.daysInPhase.$numberLong) : (Number(p.daysInPhase) || 0),
+        daysInProject: p.daysInProject?.$numberLong ? parseInt(p.daysInProject.$numberLong) : (Number(p.daysInProject) || 0),
+        daysRemaining: p.daysRemaining?.$numberLong ? parseInt(p.daysRemaining.$numberLong) : (Number(p.daysRemaining) || 0),
+        totalHoldDays: p.totalHoldDays?.$numberLong ? parseInt(p.totalHoldDays.$numberLong) : (Number(p.totalHoldDays) || 0),
+        phaseExpectedDays: p.phaseExpectedDays?.$numberLong ? parseInt(p.phaseExpectedDays.$numberLong) : (Number(p.phaseExpectedDays) || 0),
+      }));
 
-    setProjects(normalized);
-  } catch (error) { 
-    console.error("Erro ao carregar projetos:", error); 
-  } finally { 
-    setLoading(false); 
-  }
-};
+      setProjects(normalized);
+    } catch (error) { 
+      console.error("Erro ao carregar projetos:", error); 
+    } finally { 
+      setLoading(false); 
+    }
+  };
 
   useEffect(() => { void fetchProjects(); }, []);
 
+  // --- LÓGICA DE FILTROS ---
   useEffect(() => {
     let res = projects;
     if (filters.title) res = res.filter(p => p.project?.title?.toLowerCase().includes(filters.title.toLowerCase()));
@@ -57,63 +58,62 @@ const fetchProjects = async () => {
     setFilteredProjects(res);
   }, [filters, projects]);
 
-  // --- EXPORTAÇÃO COMPLETA COM JUSTIFICATIVAS ---
-const exportCsv = () => {
-  // Cabeçalhos técnicos completos para auditoria
-  const headers = [
-    "ID Projeto", "Nome do Projeto", "County", "Operador Responsável", 
-    "Fase Atual", "Status da Fase", "Expectativa Fase (Dias)", "Dias na Fase",
-    "Status Projeto", "Status Global", "Hold Days (Total)", "Dias Totais Projeto", "Dias Restantes", 
-    "Cor Farol", "Data Emissão Permit",
-    "Inicio Phase 1", "Fim Phase 1", "Status Phase 1",
-    "Inicio Phase 2", "Fim Phase 2", "Status Phase 2",
-    "Inicio Phase 3", "Fim Phase 3", "Status Phase 3",
-    "JUSTIFICATIVA TÉCNICA"
-  ];
+  // --- EXPORTAÇÃO CSV COMPLETA (21 COLUNAS) ---
+  const exportCsv = () => {
+    const headers = [
+      "ID Projeto", "Nome do Projeto", "County", "Operador Responsável", 
+      "Fase Atual", "Status da Fase", "Expectativa Fase (Dias)", "Dias na Fase",
+      "Status Projeto", "Status Global", "Hold Days (Total)", "Dias Totais Projeto", "Dias Restantes", 
+      "Cor Farol", "Data Emissão Permit",
+      "Inicio Phase 1", "Fim Phase 1", "Status Phase 1",
+      "Inicio Phase 2", "Fim Phase 2", "Status Phase 2",
+      "Inicio Phase 3", "Fim Phase 3", "Status Phase 3",
+      "JUSTIFICATIVA TÉCNICA"
+    ];
 
-  // Mapeamento direto de TODA a base vinda do MongoDB
-  const rows = projects.map(p => [
-    p.projectId,
-    `"${p.project?.title || ""}"`,
-    `"${p.county || ""}"`,
-    `"${p.majorityOperatorName || ""}"`,
-    p.currentPhase || "",
-    p.phaseStatus || "",
-    p.phaseExpectedDays || 0,
-    p.daysInPhase || 0,
-    p.projectStatus || "",
-    p.StatusProject || "",
-    p.totalHoldDays || 0,
-    p.daysInProject || 0,
-    p.daysRemaining || 0,
-    p.projectColor || "",
-    p.permitIssuedDate || "",
-    p.StartDatePhase1 || "", p.EndDatePhase1 || "", p.StatusPhase1 || "",
-    p.StartDatePhase2 || "", p.EndDatePhase2 || "", p.StatusPhase2 || "",
-    p.StartDatePhase3 || "", p.EndDatePhase3 || "", p.StatusPhase3 || "",
-    `"${p.reason || p.justification || ""}"`
-  ]);
+    const rows = projects.map(p => [
+      p.projectId,
+      `"${p.project?.title || ""}"`,
+      `"${p.county || ""}"`,
+      `"${p.majorityOperatorName || ""}"`,
+      p.currentPhase || "",
+      p.phaseStatus || "",
+      p.phaseExpectedDays || 0,
+      p.daysInPhase || 0,
+      p.projectStatus || "",
+      p.StatusProject || "",
+      p.totalHoldDays || 0,
+      p.daysInProject || 0,
+      p.daysRemaining || 0,
+      p.projectColor || "",
+      p.permitIssuedDate || "",
+      p.StartDatePhase1 || "", p.EndDatePhase1 || "", p.StatusPhase1 || "",
+      p.StartDatePhase2 || "", p.EndDatePhase2 || "", p.StatusPhase2 || "",
+      p.StartDatePhase3 || "", p.EndDatePhase3 || "", p.StatusPhase3 || "",
+      `"${p.reason || p.justification || ""}"`
+    ]);
 
-  const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-  const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' }); // \ufeff ajuda o Excel com acentos
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `Relatorio_Master_Completo_${new Date().toISOString().split('T')[0]}.csv`;
-  link.click();
-};
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Relatorio_Completo_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
 
+  // --- ESTILOS E COMPONENTES AUXILIARES ---
   const getDotStyle = (color: string): React.CSSProperties => ({
     height: 12, width: 12, borderRadius: "50%", display: "inline-block",
     backgroundColor: color === 'Verde' ? '#22c55e' : color === 'Amarelo' ? '#eab308' : color === 'Laranja' ? '#f97316' : '#ef4444'
   });
 
   const S: Record<string, React.CSSProperties> = {
-    page: { background: "#F6F7F9", borderRadius: 12, padding: 18, border: "1px solid rgba(0,0,0,0.06)", width: "100%", maxWidth: 1400, margin: "0 auto", color: "#111827" },
+    page: { background: "#F6F7F9", borderRadius: 12, padding: 18, width: "100%", maxWidth: 1400, margin: "0 auto", color: "#111827" },
     btnPrimary: { background: "#7A5A3A", color: "white", border: "none", padding: "10px 14px", borderRadius: 12, fontWeight: 800, cursor: "pointer", height: 42 },
     btnGhost: { background: "white", color: "#7A5A3A", border: "1px solid rgba(122,90,58,0.35)", padding: "10px 14px", borderRadius: 12, fontWeight: 800, cursor: "pointer", height: 42 },
-    input: { width: "100%", height: 42, padding: "0 12px", borderRadius: 12, border: "1px solid rgba(0,0,0,0.14)", outline: "none", color: "#111827", backgroundColor: "#fff" },
+    input: { width: "100%", height: 42, padding: "0 12px", borderRadius: 12, border: "1px solid rgba(0,0,0,0.14)", color: "#111827", backgroundColor: "#fff" },
     th: { textAlign: "left", fontSize: 10, color: "rgba(17,24,39,0.7)", padding: "12px", background: "#FBFBFC", fontWeight: 900, borderBottom: "1px solid rgba(0,0,0,0.06)" },
-    td: { padding: "12px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: "#111827" } 
+    td: { padding: "12px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: "#111827" } // Cor forçada para visibilidade
   };
 
   return (
@@ -127,8 +127,8 @@ const exportCsv = () => {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
-        <input style={S.input} placeholder="Projeto" onChange={e => setFilters({...filters, title: e.target.value})}/>
-        <input style={S.input} placeholder="Operador" onChange={e => setFilters({...filters, operator: e.target.value})}/>
+        <input style={S.input} placeholder="Filtrar Projeto..." onChange={e => setFilters({...filters, title: e.target.value})}/>
+        <input style={S.input} placeholder="Filtrar Operador..." onChange={e => setFilters({...filters, operator: e.target.value})}/>
         <select style={S.input} onChange={e => setFilters({...filters, phase: e.target.value})}>
           <option value="">Todas as Fases</option>
           <option value="Phase 1">Phase 1</option><option value="Phase 2">Phase 2</option><option value="Phase 3">Phase 3</option>
@@ -161,7 +161,7 @@ const exportCsv = () => {
                 <td style={S.td}>{p.totalHoldDays || 0}</td>
                 <td style={S.td}>{p.daysInPhase}</td>
                 <td style={S.td}>{p.daysInProject}</td>
-                <td style={{ ...S.td, color: p.daysRemaining < 0 ? 'red' : 'green', fontWeight: 800 }}>{p.daysRemaining}</td>
+                <td style={{ ...S.td, color: p.daysRemaining < 0 ? '#ef4444' : '#22c55e', fontWeight: 800 }}>{p.daysRemaining}</td>
                 <td style={S.td}><button style={S.btnGhost} onClick={() => { setSelectedProject(p); setIsModalOpen(true); }}>Justificar</button></td>
               </tr>
             ))}
@@ -172,14 +172,20 @@ const exportCsv = () => {
       {isModalOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ background: "white", padding: 24, borderRadius: 16, width: "100%", maxWidth: 500, color: "#111827" }}>
-            <h3 style={{ marginTop: 0 }}>Salvar em stausProjects</h3>
-            <textarea style={{ ...S.input, height: 100, padding: 10, marginBottom: 16 }} value={newReason} onChange={e => setNewReason(e.target.value)} placeholder="Escreva o motivo técnico..."/>
+            <h3 style={{ marginTop: 0 }}>Salvar Justificativa Técnica</h3>
+            <p style={{ fontSize: 12, color: "#666" }}>Destino: Collection stausProjects</p>
+            <textarea style={{ ...S.input, height: 100, padding: 10, marginBottom: 16 }} value={newReason} onChange={e => setNewReason(e.target.value)} placeholder="Descreva o motivo do atraso ou status atual..."/>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button style={S.btnGhost} onClick={() => setIsModalOpen(false)}>Cancelar</button>
               <button style={S.btnPrimary} onClick={async () => {
-                await post({ apiName: 'operatorApi', path: '/projects-control', options: { body: { projectId: selectedProject?.projectId, reason: newReason } } });
+                // Alterado para fetch POST para evitar erro de API Name
+                await fetch("https://d2ti6bqx2tfgyt.execute-api.us-east-2.amazonaws.com/staging/projects-control", {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ projectId: selectedProject?.projectId, reason: newReason })
+                });
                 setIsModalOpen(false); setNewReason(""); void fetchProjects();
-              }}>Confirmar</button>
+              }}>Confirmar e Salvar</button>
             </div>
           </div>
         </div>
