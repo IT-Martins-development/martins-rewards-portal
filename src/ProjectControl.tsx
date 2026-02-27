@@ -52,20 +52,32 @@ export default function ProjectControl() {
     fetchProjects();
   }, []);
 
-  const fetchProjects = async () => {
+const fetchProjects = async () => {
     setLoading(true);
     try {
-      // Nova sintaxe do Amplify v6 para GET
       const restOperation = get({
         apiName: 'operatorApi',
         path: '/projects-control'
       });
       
-      const response = await restOperation.response;
-      const data = await response.body.json(); // Converte a resposta para JSON
+const response = await restOperation.response;
+      let data: any = await response.body.json(); // <-- Só adicionar ": any" aqui
       
-      // O TypeScript pede para garantirmos o formato, então usamos o "as unknown as ProjectData[]"
-      setProjects(data as unknown as ProjectData[]);
+      // 1. LOG PARA VERMOS O QUE CHEGOU
+      console.log("Resposta da API (Tipo):", typeof data);
+      console.log("Resposta da API (Conteúdo):", data);
+
+      // 2. TRAVA DE SEGURANÇA
+      if (typeof data === 'string') {
+        data = JSON.parse(data);
+      }
+
+      if (data && data.body) {
+         data = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+      }
+
+      console.log("Array de projetos final:", data);
+      setProjects(data as ProjectData[]);
     } catch (error) {
       console.error("Erro ao buscar projetos:", error);
     } finally {
