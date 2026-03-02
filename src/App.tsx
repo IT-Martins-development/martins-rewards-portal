@@ -18,7 +18,6 @@ export type { Lang } from "./types/lang";
 
 
 type Page = "crud" | "approvals" | "report" | "balances" | "projects";
-type Role = "ADMIN" | "INVESTOR" | "NONE";
 
 // --- ESTILOS ORIGINAIS PRESERVADOS ---
 const shell: React.CSSProperties = { minHeight: "100vh", background: "#111", color: "#fff" };
