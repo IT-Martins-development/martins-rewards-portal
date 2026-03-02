@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
 import { Amplify } from 'aws-amplify';
 
-// Registro forçado da API compatível com o build tsc da AWS
-const apiConfig = {
+// Bypass de tipagem para o build tsc aceitar o registro da API REST
+const myConfig: any = {
   API: {
     REST: {
       "operatorApi": {
@@ -13,7 +13,7 @@ const apiConfig = {
     }
   }
 };
-Amplify.configure(apiConfig);
+Amplify.configure(myConfig);
 
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
