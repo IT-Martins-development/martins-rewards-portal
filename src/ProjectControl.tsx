@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
 import { Amplify } from 'aws-amplify';
 
-// Bypass de tipagem para o build tsc aceitar o registro da API REST
+// Bypass para o build TSC aceitar o registro da API sem erro de tipagem
 const myConfig: any = {
   API: {
     REST: {
@@ -14,6 +14,9 @@ const myConfig: any = {
   }
 };
 Amplify.configure(myConfig);
+
+export default function ProjectControl() {
+  // Mantenha exatamente as suas 151 linhas de lógica abaixo...
 
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
