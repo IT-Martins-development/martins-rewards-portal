@@ -18,28 +18,20 @@ import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
 // @ts-ignore
-// src/App.tsx
 
-const configuration: any = {
+Amplify.configure({
   ...awsExports,
-  Auth: {
-    // No Gen 1, as chaves region e userPoolId ficam direto no Auth
-    region: 'us-east-2',
-    userPoolId: 'us-east-2_J1tQgVm42',
-    userPoolClientId: '43rdma1om3vhmovk5hdr7desr2',
-  },
   API: {
-    endpoints: [
-      {
-        name: "operatorApi", // Nome exato registrado no cli-inputs.json
+    REST: {
+      operatorApi: {
         endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
         region: "us-east-2"
       }
-    ]
+    }
   }
-};
+});
 
-Amplify.configure(configuration);
+
 
 type Page = "crud" | "approvals" | "report" | "balances" | "projects";
 type Role = "ADMIN" | "INVESTOR" | "NONE";
