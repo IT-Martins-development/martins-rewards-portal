@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
 import { Amplify } from 'aws-amplify';
 
-// Configuração Unificada: Resolve Login e API
+// Configuração unificada para resolver erro de Auth e erro de InvalidApiName
 const finalConfig: any = {
   Auth: {
     Cognito: {
@@ -12,7 +12,7 @@ const finalConfig: any = {
   },
   API: {
     REST: {
-      "operatorApi": {
+      "operatorApi": { // Nome exato conforme o cli-inputs.json
         endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
         region: "us-east-2"
       }
