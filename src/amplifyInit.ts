@@ -1,11 +1,15 @@
 import { Amplify } from "aws-amplify";
-import awsExports from "./aws-exports";
+import awsAuth from "./aws-auth";
+
+// Se você quiser continuar usando o AppSync do aws-exports gerado,
+// importe ele também. Mas o Auth fica manual e estável.
+import awsExports from "./aws-exports"; // este é o .js gerado no build
 
 Amplify.configure({
   Auth: {
     Cognito: {
-      userPoolId: awsExports.aws_user_pools_id,
-      userPoolClientId: awsExports.aws_user_pools_web_client_id,
+      userPoolId: awsAuth.userPoolId,
+      userPoolClientId: awsAuth.userPoolClientId,
       loginWith: { email: true },
     },
   },
@@ -14,9 +18,8 @@ Amplify.configure({
     GraphQL: {
       endpoint: awsExports.aws_appsync_graphqlEndpoint,
       region: awsExports.aws_appsync_region,
-      defaultAuthMode: "userPool", // <<< CRÍTICO p/ não cair em IAM
+      defaultAuthMode: "userPool",
     },
-
     REST: {
       operatorApi: {
         endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
