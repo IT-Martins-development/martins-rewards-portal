@@ -3,7 +3,8 @@ import awsAuth from "./aws-auth";
 
 // Se você quiser continuar usando o AppSync do aws-exports gerado,
 // importe ele também. Mas o Auth fica manual e estável.
-import awsExports from "./aws-exports"; // este é o .js gerado no build
+// força usar o arquivo gerado pelo "amplify pull"
+import awsExports from "./aws-exports.js";
 
 Amplify.configure({
   Auth: {
@@ -28,3 +29,7 @@ Amplify.configure({
     },
   },
 });
+// Debug temporário
+// @ts-ignore
+window.__amplify_cfg = Amplify.getConfig();
+console.log("AMPLIFY CFG", Amplify.getConfig());
