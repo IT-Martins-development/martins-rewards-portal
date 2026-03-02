@@ -23,7 +23,7 @@ Amplify.configure({
       },
     REST: {
       operatorApi: {
-        endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
+        endpoint: "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main",
         region: "us-east-2",
       },
     },
