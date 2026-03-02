@@ -1,11 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
 
-/**
- * PROJECT CONTROL (MASTER) - VERSÃO HOMOLOGADA
- * Nota: A configuração do Amplify (Auth e API) deve ser feita apenas no App.tsx 
- * para evitar o erro "Auth UserPool not configured".
- */
 
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
