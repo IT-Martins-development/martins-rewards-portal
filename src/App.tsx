@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Amplify } from "aws-amplify";
 import { fetchAuthSession } from "aws-amplify/auth";
-import awsExports from "./aws-exports";
 import "./index.css";
 
 import { Authenticator } from "@aws-amplify/ui-react";
