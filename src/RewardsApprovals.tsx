@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { generateClient } from "aws-amplify/api";
 import type { Lang } from "./types/lang";
-
-
-const client = generateClient();
+import { gqlClient } from "./lib/amplifyClient";
 
 /* =======================
    GraphQL
@@ -116,9 +113,10 @@ export default function RewardsApprovals({ lang: _lang }: RewardsApprovalsProps)
     setError(null);
 
     try {
-      const res: any = await client.graphql({
+      const res: any = await gqlClient.graphql({
         query: LIST_REDEMPTIONS,
         variables: { status: "REQUESTED", limit: 500 },
+        authMode: "userPool",
       });
 
       // ✅ trata erro real
@@ -147,9 +145,10 @@ export default function RewardsApprovals({ lang: _lang }: RewardsApprovalsProps)
     if (!ok) return;
 
     try {
-      const res: any = await client.graphql({
+      const res: any = await gqlClient.graphql({
         query: UPDATE_STATUS,
         variables: { id, status },
+        authMode: "userPool",
       });
 
       if (res?.errors?.length) {

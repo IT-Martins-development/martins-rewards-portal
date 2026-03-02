@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Amplify } from "aws-amplify";
 import { fetchAuthSession } from "aws-amplify/auth";
 import "./index.css";
 
