@@ -21,23 +21,26 @@ export type { Lang } from "./types/lang";
  * CONFIGURAÇÃO UNIFICADA - PADRÃO GEN 1
  * Resolve o erro de UserPool e o erro de InvalidApiName.
  */
-Amplify.configure({
-  ...awsExports, 
+
+const configuration: any = {
+  ...awsExports,
   Auth: {
-    Cognito: {
-      userPoolId: 'us-east-2_J1tQgVm42', // Corrigido Id
-      userPoolClientId: '43rdma1om3vhmovk5hdr7desr2',
-    },
+    region: 'us-east-2',
+    userPoolId: 'us-east-2_J1tQgVm42',
+    userPoolClientId: '43rdma1om3vhmovk5hdr7desr2',
   },
   API: {
-    REST: {
-      operatorApi: {
+    endpoints: [
+      {
+        name: "operatorApi", // Nome exato do backend
         endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
         region: "us-east-2"
       }
-    }
+    ]
   }
-});
+};
+
+Amplify.configure(configuration);
 
 type Page = "crud" | "approvals" | "report" | "balances" | "projects";
 type Role = "ADMIN" | "INVESTOR" | "NONE";
