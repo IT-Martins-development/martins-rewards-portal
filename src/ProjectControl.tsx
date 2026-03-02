@@ -2,8 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
 import { Amplify } from 'aws-amplify';
 
-// Bypass absoluto para o build tsc passar e registrar a API
-const fullConfig = {
+// Configuração Unificada: Resolve Login e API
+const finalConfig: any = {
+  Auth: {
+    Cognito: {
+      userPoolId: 'us-east-2_J1tQgVm42',
+      userPoolClientId: '43rdma1om3vhmovk5hdr7desr2'
+    }
+  },
   API: {
     REST: {
       "operatorApi": {
@@ -14,8 +20,7 @@ const fullConfig = {
   }
 };
 
-// Forçamos o Amplify a aceitar a configuração sem validar os tipos
-(Amplify as any)["configure"](fullConfig);
+Amplify.configure(finalConfig);
 
 
 export default function ProjectControl() {
