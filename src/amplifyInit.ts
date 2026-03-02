@@ -16,11 +16,11 @@ Amplify.configure({
   },
 
   API: {
-    GraphQL: {
-      endpoint: awsExports.aws_appsync_graphqlEndpoint,
-      region: awsExports.aws_appsync_region,
-      defaultAuthMode: "userPool",
-    },
+      GraphQL: {
+        endpoint: "https://wnpqbka2h5d3lfi3xznvmd4tcq.appsync-api.us-east-2.amazonaws.com/graphql",
+        region: "us-east-2",
+        defaultAuthMode: "userPool",
+      },
     REST: {
       operatorApi: {
         endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
