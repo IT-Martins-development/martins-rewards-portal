@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Amplify } from "aws-amplify";
 import { fetchAuthSession } from "aws-amplify/auth";
@@ -13,20 +12,22 @@ import RewardsApprovals from "./RewardsApprovals";
 import RewardsReport from "./RewardsReport";
 import RewardsBalancesReport from "./RewardsBalancesReport";
 import RewardsUser from "./RewardsUser";
-// 1. IMPORTAMOS A NOSSA NOVA TELA AQUI:
 import ProjectControl from "./ProjectControl"; 
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
+/**
+ * CONFIGURAÇÃO UNIFICADA - PADRÃO GEN 1
+ * Resolve o erro de UserPool e o erro de InvalidApiName.
+ */
 Amplify.configure({
   ...awsExports, 
   Auth: {
     Cognito: {
-      userPoolId: 'us-east-2_J1tQgVm42',
+      userPoolId: 'us-east-2_J1tQgVm42', // Corrigido Id
       userPoolClientId: '43rdma1om3vhmovk5hdr7desr2',
-
-    }
+    },
   },
   API: {
     REST: {
@@ -38,94 +39,21 @@ Amplify.configure({
   }
 });
 
-// 2. ADICIONAMOS "projects" AQUI NOS TIPOS DE PÁGINA:
 type Page = "crud" | "approvals" | "report" | "balances" | "projects";
 type Role = "ADMIN" | "INVESTOR" | "NONE";
 
-const shell: React.CSSProperties = {
-  minHeight: "100vh",
-  background: "#111",
-  color: "#fff",
-};
-
-const layout: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "260px 1fr",
-  gap: 0,
-  minHeight: "100vh",
-};
-
-const sidebar: React.CSSProperties = {
-  background: "linear-gradient(180deg,#1b1b1b,#111)",
-  padding: 16,
-  borderRight: "1px solid rgba(255,255,255,.06)",
-};
-
-const brand: React.CSSProperties = {
-  fontWeight: 900,
-  fontSize: 18,
-  marginBottom: 18,
-};
-
-const menuTitle: React.CSSProperties = {
-  opacity: 0.6,
-  fontSize: 12,
-  letterSpacing: 1,
-  marginBottom: 10,
-};
-
-const btn: React.CSSProperties = {
-  width: "100%",
-  textAlign: "left",
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,.10)",
-  background: "transparent",
-  color: "#fff",
-  cursor: "pointer",
-  marginBottom: 8,
-};
-
-const btnActive: React.CSSProperties = {
-  ...btn,
-  border: "1px solid rgba(255,255,255,.30)",
-  background: "rgba(255,255,255,.06)",
-};
-
-const contentWrap: React.CSSProperties = {
-  padding: 18,
-  position: "relative",
-};
-
-const topbar: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 10,
-  alignItems: "center",
-  marginBottom: 12,
-  flexWrap: "wrap",
-};
-
-const logoutBtn: React.CSSProperties = {
-  border: "0",
-  borderRadius: 999,
-  padding: "8px 14px",
-  background: "#6b5a2b",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const selectDark: React.CSSProperties = {
-  height: 36,
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,.18)",
-  background: "rgba(255,255,255,.06)",
-  color: "#fff",
-  padding: "0 10px",
-  fontWeight: 800,
-  outline: "none",
-};
+// --- ESTILOS ORIGINAIS PRESERVADOS ---
+const shell: React.CSSProperties = { minHeight: "100vh", background: "#111", color: "#fff" };
+const layout: React.CSSProperties = { display: "grid", gridTemplateColumns: "260px 1fr", gap: 0, minHeight: "100vh" };
+const sidebar: React.CSSProperties = { background: "linear-gradient(180deg,#1b1b1b,#111)", padding: 16, borderRight: "1px solid rgba(255,255,255,.06)" };
+const brand: React.CSSProperties = { fontWeight: 900, fontSize: 18, marginBottom: 18 };
+const menuTitle: React.CSSProperties = { opacity: 0.6, fontSize: 12, letterSpacing: 1, marginBottom: 10 };
+const btn: React.CSSProperties = { width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,.10)", background: "transparent", color: "#fff", cursor: "pointer", marginBottom: 8 };
+const btnActive: React.CSSProperties = { ...btn, border: "1px solid rgba(255,255,255,.30)", background: "rgba(255,255,255,.06)" };
+const contentWrap: React.CSSProperties = { padding: 18, position: "relative" };
+const topbar: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" };
+const logoutBtn: React.CSSProperties = { border: "0", borderRadius: 999, padding: "8px 14px", background: "#6b5a2b", color: "#fff", cursor: "pointer", fontWeight: 800 };
+const selectDark: React.CSSProperties = { height: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "0 10px", fontWeight: 800, outline: "none" };
 
 function normalizeGroups(groups?: string[]) {
   return (groups || []).map((g) => String(g).trim().toLowerCase());
@@ -135,8 +63,6 @@ function roleFromGroups(groups?: string[]): Role {
   const g = normalizeGroups(groups);
   const isAdmin = g.includes("adminrewards");
   const isInvestor = g.includes("investor");
-
-  // prioridade: Admin > Investor
   if (isAdmin) return "ADMIN";
   if (isInvestor) return "INVESTOR";
   return "NONE";
@@ -155,15 +81,12 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-
     async function checkAccess() {
       setChecking(true);
       try {
         const session = await fetchAuthSession();
-        const groups =
-          (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) || [];
+        const groups = (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) || [];
         const r = roleFromGroups(groups);
-
         if (!cancelled) setRole(r);
       } catch {
         if (!cancelled) setRole("NONE");
@@ -171,14 +94,10 @@ function AppShell({ signOut }: { signOut?: () => void }) {
         if (!cancelled) setChecking(false);
       }
     }
-
     checkAccess();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // Loading
   if (checking) {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
@@ -189,139 +108,63 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     );
   }
 
-  // INVESTOR (portal do usuário)
   if (role === "INVESTOR") {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            padding: 14,
-            maxWidth: 1200,
-            margin: "0 auto",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: 14, maxWidth: 1200, margin: "0 auto", alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ fontWeight: 900, color: "#111827" }}>Martins Development</div>
-
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value as Lang)}
-              style={{
-                height: 36,
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.14)",
-                background: "#fff",
-                color: "#111827",
-                padding: "0 10px",
-                fontWeight: 800,
-                outline: "none",
-              }}
-              aria-label="Language"
-            >
-              <option value="pt">PT</option>
-              <option value="en">EN</option>
-              <option value="es">ES</option>
+            <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} style={selectDark} aria-label="Language">
+              <option value="pt">PT</option><option value="en">EN</option><option value="es">ES</option>
             </select>
-
-            <button style={{ ...logoutBtn, background: "#7A5A3A" }} onClick={() => signOut?.()}>
-              Sair
-            </button>
+            <button style={{ ...logoutBtn, background: "#7A5A3A" }} onClick={() => signOut?.()}>Sair</button>
           </div>
         </div>
-
         <RewardsUser lang={langLabel} />
       </div>
     );
   }
 
-  // NONE
   if (role === "NONE") {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
-        <div
-          style={{
-            maxWidth: 900,
-            margin: "0 auto",
-            background: "white",
-            border: "1px solid rgba(0,0,0,0.08)",
-            borderRadius: 12,
-            padding: 18,
-            color: "#111827",
-          }}
-        >
+        <div style={{ maxWidth: 900, margin: "0 auto", background: "white", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12, padding: 18, color: "#111827" }}>
           <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Acesso negado</div>
-          <div style={{ opacity: 0.75, marginBottom: 14 }}>
-            Seu usuário não está no grupo <b>Investor</b> nem <b>AdminRewards</b>.
-          </div>
-          <button style={{ ...logoutBtn, background: "#7A5A3A" }} onClick={() => signOut?.()}>
-            Sair
-          </button>
+          <div style={{ opacity: 0.75, marginBottom: 14 }}>Seu usuário não tem permissão de acesso.</div>
+          <button style={{ ...logoutBtn, background: "#7A5A3A" }} onClick={() => signOut?.()}>Sair</button>
         </div>
       </div>
     );
   }
 
-  // ADMIN (layout atual)
   return (
     <div style={shell}>
       <div style={layout}>
         <aside style={sidebar}>
           <div style={brand}>• Martins Development</div>
-
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-            <div style={{ opacity: 0.75, fontSize: 12, fontWeight: 900, letterSpacing: 0.6 }}>
-              LANG
-            </div>
+            <div style={{ opacity: 0.75, fontSize: 12, fontWeight: 900, letterSpacing: 0.6 }}>LANG</div>
             <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} style={selectDark}>
-              <option value="pt">PT</option>
-              <option value="en">EN</option>
-              <option value="es">ES</option>
+              <option value="pt">PT</option><option value="en">EN</option><option value="es">ES</option>
             </select>
           </div>
-
           <div style={menuTitle}>MENU</div>
-
-          <button style={page === "crud" ? btnActive : btn} onClick={() => setPage("crud")}>
-            Rewards (CRUD)
-          </button>
-
-          <button style={page === "approvals" ? btnActive : btn} onClick={() => setPage("approvals")}>
-            Aprovações
-          </button>
-
-          <button style={page === "report" ? btnActive : btn} onClick={() => setPage("report")}>
-            Relatório
-          </button>
-
-          <button style={page === "balances" ? btnActive : btn} onClick={() => setPage("balances")}>
-            Saldos
-          </button>
-
-          {/* 3. CRIAMOS O NOVO BOTÃO NO MENU LATERAL: */}
-          <button style={page === "projects" ? btnActive : btn} onClick={() => setPage("projects")}>
-            Projetos
-          </button>
+          <button style={page === "crud" ? btnActive : btn} onClick={() => setPage("crud")}>Rewards (CRUD)</button>
+          <button style={page === "approvals" ? btnActive : btn} onClick={() => setPage("approvals")}>Aprovações</button>
+          <button style={page === "report" ? btnActive : btn} onClick={() => setPage("report")}>Relatório</button>
+          <button style={page === "balances" ? btnActive : btn} onClick={() => setPage("balances")}>Saldos</button>
+          <button style={page === "projects" ? btnActive : btn} onClick={() => setPage("projects")}>Projetos</button>
         </aside>
 
         <main style={contentWrap}>
           <div style={topbar}>
             <div style={{ opacity: 0.7, fontWeight: 800 }}>AdminRewards • {langLabel}</div>
-            <button style={logoutBtn} onClick={() => signOut?.()}>
-              Sair
-            </button>
+            <button style={logoutBtn} onClick={() => signOut?.()}>Sair</button>
           </div>
-
           {page === "crud" && <RewardsCRUD lang={lang} />}
           {page === "approvals" && <RewardsApprovals lang={lang} />}
           {page === "report" && <RewardsReport lang={langLabel} />}
           {page === "balances" && <RewardsBalancesReport lang={langLabel} />}
-          
-          {/* 4. DIZEMOS PARA O REACT RENDERIZAR A TELA AQUI: */}
           {page === "projects" && <ProjectControl />}
         </main>
       </div>
