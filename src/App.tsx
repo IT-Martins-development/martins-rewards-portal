@@ -16,7 +16,7 @@ import ProjectControl from "./ProjectControl";
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
-
+type Role = "ADMIN" | "INVESTOR" | "NONE";
 type Page = "crud" | "approvals" | "report" | "balances" | "projects";
 
 // --- ESTILOS ORIGINAIS PRESERVADOS ---
