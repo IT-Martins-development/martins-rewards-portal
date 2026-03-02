@@ -17,18 +17,28 @@ import ProjectControl from "./ProjectControl";
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
-// @ts-ignore
+
+import { Amplify } from "aws-amplify";
+import awsExports from "./aws-exports";
 
 Amplify.configure({
-  ...awsExports,
+  Auth: {
+    Cognito: {
+      userPoolId: awsExports.aws_user_pools_id,
+      userPoolClientId: awsExports.aws_user_pools_web_client_id,
+      loginWith: { email: true },
+      // identityPoolId: "us-east-2:..." // somente se você usar Identity Pool
+    },
+  },
+
   API: {
     REST: {
       operatorApi: {
         endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
-        region: "us-east-2"
-      }
-    }
-  }
+        region: "us-east-2",
+      },
+    },
+  },
 });
 
 console.log("AMPLIFY CONFIG:", Amplify.getConfig());
