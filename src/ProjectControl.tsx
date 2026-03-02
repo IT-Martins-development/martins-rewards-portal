@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { get, post } from 'aws-amplify/api';
 
-
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<any[]>([]);

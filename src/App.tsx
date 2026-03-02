@@ -31,7 +31,7 @@ Amplify.configure({
   }
 });
 
-
+console.log("AMPLIFY CONFIG:", Amplify.getConfig());
 
 type Page = "crud" | "approvals" | "report" | "balances" | "projects";
 type Role = "ADMIN" | "INVESTOR" | "NONE";
