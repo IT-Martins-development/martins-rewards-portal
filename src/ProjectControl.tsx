@@ -1,22 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { get, post } from "aws-amplify/api";
+
+type PageSize = 10 | 50 | 100;
+
+type DynamicField =
+  | ""
+  | "project.title"
+  | "majorityOperatorName"
+  | "county"
+  | "projectColor"
+  | "currentPhase"
+  | "StatusProject"
+  | "projectStatus"
+  | "projectId";
+
+const ENUM_FIELDS: DynamicField[] = ["projectColor", "currentPhase", "StatusProject", "projectStatus"];
 
 export default function ProjectControl() {
   const [projects, setProjects] = useState<any[]>([]);
-  const [filteredProjects, setFilteredProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // modal justificativa
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [newReason, setNewReason] = useState("");
 
-  const [filters, setFilters] = useState({
-    title: "",
-    operator: "",
-    color: "",
-    phase: "",
-    globalStatus: "",
-  });
+  // filtro dinâmico
+  const [dynField, setDynField] = useState<DynamicField>("");
+  const [dynValue, setDynValue] = useState("");
+
+  // paginação
+  const [pageSize, setPageSize] = useState<PageSize>(10);
+  const [page, setPage] = useState(1);
 
   const toNum = (v: any) => {
     if (v?.$numberLong) return parseInt(v.$numberLong, 10);
@@ -24,15 +39,24 @@ export default function ProjectControl() {
     return Number.isFinite(n) ? n : 0;
   };
 
+  const getNestedValue = (obj: any, path: string) => {
+    if (!obj) return "";
+    const parts = path.split(".");
+    let cur = obj;
+    for (const p of parts) {
+      cur = cur?.[p];
+      if (cur === undefined || cur === null) return "";
+    }
+    return cur;
+  };
+
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      // REST API registrada como 'operatorApi'
       const restOperation = get({ apiName: "operatorApi", path: "/projects-control" });
       const response = await restOperation.response;
       const data: any = await response.body.json();
 
-      // Às vezes a Lambda devolve body string
       const rawList = Array.isArray(data) ? data : data?.body ? JSON.parse(data.body) : [];
 
       const normalized = rawList.map((p: any) => ({
@@ -56,25 +80,65 @@ export default function ProjectControl() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reset automático ao mudar filtros / page size
   useEffect(() => {
+    setPage(1);
+  }, [dynField, dynValue, pageSize]);
+
+  const enumOptions = useMemo(() => {
+    if (!dynField || !ENUM_FIELDS.includes(dynField)) return [];
+    const set = new Set<string>();
+    for (const p of projects) {
+      const v = String(getNestedValue(p, dynField) ?? "").trim();
+      if (v) set.add(v);
+    }
+
+    // fallback se vier vazio (ou quiser lista padrão)
+    if (dynField === "projectColor") {
+      ["Verde", "Amarelo", "Laranja", "Vermelho"].forEach((v) => set.add(v));
+    }
+    if (dynField === "currentPhase") {
+      ["Phase 1", "Phase 2", "Phase 3"].forEach((v) => set.add(v));
+    }
+    if (dynField === "StatusProject") {
+      ["In Progress", "Concluded", "Delayed", "On Hold"].forEach((v) => set.add(v));
+    }
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [dynField, projects]);
+
+  const filteredProjects = useMemo(() => {
     let res = projects;
 
-    if (filters.title) {
-      const t = filters.title.toLowerCase();
-      res = res.filter((p) => (p.project?.title || "").toLowerCase().includes(t));
-    }
-    if (filters.operator) {
-      const o = filters.operator.toLowerCase();
-      res = res.filter((p) => (p.majorityOperatorName || "").toLowerCase().includes(o));
-    }
-    if (filters.color) res = res.filter((p) => p.projectColor === filters.color);
-    if (filters.phase) res = res.filter((p) => p.currentPhase === filters.phase);
-    if (filters.globalStatus) res = res.filter((p) => p.StatusProject === filters.globalStatus);
+    // filtro dinâmico
+    if (dynField && dynValue) {
+      const needle = dynValue.toLowerCase().trim();
 
-    setFilteredProjects(res);
-  }, [filters, projects]);
+      if (ENUM_FIELDS.includes(dynField)) {
+        // enumerados = match exato (mais previsível)
+        res = res.filter((p) => String(getNestedValue(p, dynField) ?? "") === dynValue);
+      } else if (dynField === "projectId") {
+        res = res.filter((p) => String(p.projectId ?? "").toLowerCase().includes(needle));
+      } else {
+        res = res.filter((p) => String(getNestedValue(p, dynField) ?? "").toLowerCase().includes(needle));
+      }
+    }
 
-  // --- EXPORTAÇÃO MASTER (colunas + Justificativas) ---
+    return res;
+  }, [projects, dynField, dynValue]);
+
+  const totalPages = useMemo(() => {
+    const n = Math.ceil(filteredProjects.length / pageSize);
+    return Math.max(1, n);
+  }, [filteredProjects.length, pageSize]);
+
+  const safePage = Math.min(Math.max(1, page), totalPages);
+
+  const paginatedProjects = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredProjects.slice(start, start + pageSize);
+  }, [filteredProjects, safePage, pageSize]);
+
   const exportCsv = () => {
     const headers = [
       "ID",
@@ -217,6 +281,38 @@ export default function ProjectControl() {
       verticalAlign: "top",
       whiteSpace: "nowrap",
     },
+    pagerWrap: {
+      marginTop: 14,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      flexWrap: "wrap",
+    },
+    small: { fontSize: 12, color: "rgba(17,24,39,0.75)", fontWeight: 700 },
+  };
+
+  const fieldLabel = (f: DynamicField) => {
+    switch (f) {
+      case "project.title":
+        return "Projeto";
+      case "majorityOperatorName":
+        return "Operador";
+      case "county":
+        return "County";
+      case "projectColor":
+        return "Farol";
+      case "currentPhase":
+        return "Fase Atual";
+      case "StatusProject":
+        return "Status Global";
+      case "projectStatus":
+        return "P. Status";
+      case "projectId":
+        return "Project ID";
+      default:
+        return "Selecione";
+    }
   };
 
   return (
@@ -225,64 +321,91 @@ export default function ProjectControl() {
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#111827" }}>
           Controle de Projetos (Master)
         </h2>
-        <div style={{ display: "flex", gap: 10 }}>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button style={S.btnGhost} onClick={exportCsv}>
             Exportar CSV Completo
           </button>
           <button style={S.btnPrimary} onClick={fetchProjects}>
-            {loading ? "Carregando..." : "Aplicar"}
+            {loading ? "Carregando..." : "Atualizar"}
           </button>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
+      {/* Filtro dinâmico */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.1fr 1.4fr 0.7fr 0.8fr",
+          gap: 12,
+          marginBottom: 14,
+          alignItems: "end",
+        }}
+      >
         <div>
-          <span style={S.label}>Projeto</span>
-          <input
-            style={S.input}
-            placeholder="Nome"
-            onChange={(e) => setFilters({ ...filters, title: e.target.value })}
-          />
-        </div>
-        <div>
-          <span style={S.label}>Operador</span>
-          <input
-            style={S.input}
-            placeholder="Nome"
-            onChange={(e) => setFilters({ ...filters, operator: e.target.value })}
-          />
-        </div>
-        <div>
-          <span style={S.label}>Fase</span>
-          <select style={S.input} onChange={(e) => setFilters({ ...filters, phase: e.target.value })}>
-            <option value="">Todas</option>
-            <option value="Phase 1">Phase 1</option>
-            <option value="Phase 2">Phase 2</option>
-            <option value="Phase 3">Phase 3</option>
-          </select>
-        </div>
-        <div>
-          <span style={S.label}>Status Global</span>
+          <span style={S.label}>Filtro (Campo)</span>
           <select
             style={S.input}
-            onChange={(e) => setFilters({ ...filters, globalStatus: e.target.value })}
+            value={dynField}
+            onChange={(e) => {
+              const next = e.target.value as DynamicField;
+              setDynField(next);
+              setDynValue("");
+            }}
           >
-            <option value="">Todos</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Concluded">Concluded</option>
-            <option value="Delayed">Delayed</option>
-            <option value="On Hold">On Hold</option>
+            <option value="">{fieldLabel("")}</option>
+            <option value="project.title">{fieldLabel("project.title")}</option>
+            <option value="majorityOperatorName">{fieldLabel("majorityOperatorName")}</option>
+            <option value="county">{fieldLabel("county")}</option>
+            <option value="projectColor">{fieldLabel("projectColor")}</option>
+            <option value="currentPhase">{fieldLabel("currentPhase")}</option>
+            <option value="StatusProject">{fieldLabel("StatusProject")}</option>
+            <option value="projectStatus">{fieldLabel("projectStatus")}</option>
+            <option value="projectId">{fieldLabel("projectId")}</option>
           </select>
         </div>
+
         <div>
-          <span style={S.label}>Farol</span>
-          <select style={S.input} onChange={(e) => setFilters({ ...filters, color: e.target.value })}>
-            <option value="">Todos</option>
-            <option value="Verde">Verde</option>
-            <option value="Amarelo">Amarelo</option>
-            <option value="Laranja">Laranja</option>
-            <option value="Vermelho">Vermelho</option>
+          <span style={S.label}>Valor</span>
+          {dynField && ENUM_FIELDS.includes(dynField) ? (
+            <select style={S.input} value={dynValue} onChange={(e) => setDynValue(e.target.value)}>
+              <option value="">Selecione...</option>
+              {enumOptions.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              style={S.input}
+              placeholder={dynField ? `Digite o valor para ${fieldLabel(dynField)}` : "Selecione um campo acima"}
+              value={dynValue}
+              onChange={(e) => setDynValue(e.target.value)}
+              disabled={!dynField}
+            />
+          )}
+        </div>
+
+        <div>
+          <span style={S.label}>Itens por página</span>
+          <select style={S.input} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value) as PageSize)}>
+            <option value={10}>10</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
+        </div>
+
+        <div>
+          <button
+            style={S.btnGhost}
+            onClick={() => {
+              setDynField("");
+              setDynValue("");
+            }}
+          >
+            Limpar Filtro
+          </button>
         </div>
       </div>
 
@@ -295,23 +418,20 @@ export default function ProjectControl() {
           overflowY: "hidden",
         }}
       >
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1700 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 2100 }}>
           <thead>
             <tr>
               <th style={S.th}>Farol</th>
               <th style={S.th}>Projeto</th>
-
-              {/* ✅ NOVO: Fase Atual logo após Projeto */}
+              <th style={S.th}>Operador</th>
               <th style={S.th}>Fase Atual</th>
-
               <th style={S.th}>P. Status</th>
-              <th style={S.th}>Global Status</th>
+              <th style={S.th}>Status Global</th>
               <th style={S.th}>Hold</th>
               <th style={S.th}>D. Fase</th>
               <th style={S.th}>D. Totais</th>
               <th style={S.th}>Restante</th>
 
-              {/* ✅ NOVO: campos de fases ao final */}
               <th style={S.th}>Start P1</th>
               <th style={S.th}>End P1</th>
               <th style={S.th}>Status P1</th>
@@ -329,7 +449,7 @@ export default function ProjectControl() {
           </thead>
 
           <tbody>
-            {filteredProjects.map((p) => (
+            {paginatedProjects.map((p) => (
               <tr key={p.projectId}>
                 <td style={S.td}>
                   <span style={getDotStyle(p.projectColor)} />
@@ -337,19 +457,24 @@ export default function ProjectControl() {
 
                 <td style={{ ...S.td, fontWeight: 700 }}>{p.project?.title || p.projectId}</td>
 
-                {/* ✅ NOVO: Fase Atual */}
+                <td style={S.td}>{p.majorityOperatorName || "-"}</td>
+
                 <td style={S.td}>{p.currentPhase || "-"}</td>
 
                 <td style={S.td}>{p.projectStatus || "-"}</td>
+
                 <td style={S.td}>{p.StatusProject || "-"}</td>
+
                 <td style={S.td}>{p.totalHoldDays || 0}</td>
+
                 <td style={S.td}>{p.daysInPhase}</td>
+
                 <td style={S.td}>{p.daysInProject}</td>
+
                 <td style={{ ...S.td, color: p.daysRemaining < 0 ? "red" : "green", fontWeight: 800 }}>
                   {p.daysRemaining}
                 </td>
 
-                {/* ✅ NOVO: fases ao final */}
                 <td style={S.td}>{p.StartDatePhase1 || ""}</td>
                 <td style={S.td}>{p.EndDatePhase1 || ""}</td>
                 <td style={S.td}>{p.StatusPhase1 || ""}</td>
@@ -377,10 +502,10 @@ export default function ProjectControl() {
               </tr>
             ))}
 
-            {!loading && filteredProjects.length === 0 && (
+            {!loading && paginatedProjects.length === 0 && (
               <tr>
-                <td style={{ ...S.td, padding: 16 }} colSpan={19}>
-                  Nenhum registro encontrado com os filtros atuais.
+                <td style={{ ...S.td, padding: 16 }} colSpan={20}>
+                  Nenhum registro encontrado com o filtro atual.
                 </td>
               </tr>
             )}
@@ -388,6 +513,41 @@ export default function ProjectControl() {
         </table>
       </div>
 
+      {/* Paginação */}
+      <div style={S.pagerWrap}>
+        <div style={S.small}>
+          Mostrando{" "}
+          <strong>
+            {filteredProjects.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–
+            {Math.min(safePage * pageSize, filteredProjects.length)}
+          </strong>{" "}
+          de <strong>{filteredProjects.length}</strong>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button
+            style={{ ...S.btnGhost, padding: "8px 12px", height: "auto" }}
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            ◀ Anterior
+          </button>
+
+          <span style={S.small}>
+            Página <strong>{safePage}</strong> de <strong>{totalPages}</strong>
+          </span>
+
+          <button
+            style={{ ...S.btnGhost, padding: "8px 12px", height: "auto" }}
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Próxima ▶
+          </button>
+        </div>
+      </div>
+
+      {/* Modal justificativa */}
       {isModalOpen && (
         <div
           style={{
@@ -402,6 +562,7 @@ export default function ProjectControl() {
         >
           <div style={{ background: "white", padding: 24, borderRadius: 16, width: "100%", maxWidth: 500, color: "#111827" }}>
             <h3 style={{ marginTop: 0 }}>Justificativa Técnico</h3>
+
             <div style={{ marginBottom: 10, fontSize: 13, fontWeight: "bold" }}>
               Projeto: {selectedProject?.project?.title || selectedProject?.projectId}
             </div>
