@@ -581,20 +581,57 @@ export default function ProjectControl() {
 
               <button
                 style={S.btnPrimary}
-                onClick={async () => {
-                  try {
-                    const restOperation = post({
-                      apiName: "operatorApi",
-                      path: "/projects-control",
-                      options: { body: { projectId: selectedProject?.projectId, reason: newReason } },
-                    });
-                    await restOperation.response;
-                    setIsModalOpen(false);
-                    void fetchProjects();
-                  } catch (err) {
-                    console.error("Erro ao salvar justificativa:", err);
-                  }
-                }}
+                  onClick={async () => {
+                    try {
+                      const payload = {
+                        projectId: selectedProject?.projectId,
+                        reason: newReason,
+                      };
+
+                      console.log("[POST /projects-control] payload:", payload);
+
+                      const restOperation = post({
+                        apiName: "operatorApi",
+                        path: "/projects-control",
+                        options: {
+                          headers: {
+                            "content-type": "application/json",
+                          },
+                          body: payload,
+                        },
+                      });
+
+                      const resp = await restOperation.response;
+
+                      // Amplify REST response geralmente tem statusCode e body stream
+                      const status = (resp as any).statusCode ?? (resp as any).status ?? "unknown";
+                      let bodyText = "";
+                      try {
+                        bodyText = await resp.body.text();
+                      } catch {
+                        // se não der text(), tenta json()
+                        try {
+                          const j = await resp.body.json();
+                          bodyText = JSON.stringify(j);
+                        } catch {
+                          bodyText = "<no body>";
+                        }
+                      }
+
+                      console.log("[POST /projects-control] status:", status);
+                      console.log("[POST /projects-control] body:", bodyText);
+
+                      if (String(status).startsWith("2")) {
+                        setIsModalOpen(false);
+                        await fetchProjects(); // recarrega lista pra aparecer a reason
+                      } else {
+                        alert(`Falhou ao salvar (status ${status}). Veja console.`);
+                      }
+                    } catch (err) {
+                      console.error("Erro ao salvar justificativa:", err);
+                      alert("Erro ao salvar justificativa. Veja console (Network/Console).");
+                    }
+                  }}
               >
                 Salvar Justificativa
               </button>
