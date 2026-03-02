@@ -17,12 +17,8 @@ import ProjectControl from "./ProjectControl";
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
-/**
- * CONFIGURAÇÃO UNIFICADA - PADRÃO GEN 1
- * Resolve o erro de UserPool e o erro de InvalidApiName.
- */
-
-const configuration: any = {
+// @ts-ignore
+const configuration = {
   ...awsExports,
   Auth: {
     region: 'us-east-2',
@@ -32,7 +28,7 @@ const configuration: any = {
   API: {
     endpoints: [
       {
-        name: "operatorApi", // Nome exato do backend
+        name: "operatorApi", // Nome exato conforme seu cli-inputs.json
         endpoint: "https://d3g2ypezejhh8u.execute-api.us-east-2.amazonaws.com/staging",
         region: "us-east-2"
       }
