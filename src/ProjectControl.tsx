@@ -254,6 +254,190 @@ function StatusBars({ title, rows, colorFn }: { title: string; rows: Array<{ lab
   );
 }
 
+
+function PieChartCard({ title, rows }: { title: string; rows: Array<{ label: string; value: number }> }) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  const safeRows = rows.filter((row) => row.value > 0);
+  const palette = ["#7A5A3A", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#14b8a6"];
+
+  if (!safeRows.length) {
+    return (
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid rgba(0,0,0,0.06)",
+          borderRadius: 18,
+          padding: 18,
+          boxShadow: "0 8px 30px rgba(15,23,42,0.04)",
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 900, color: "#111827", marginBottom: 14 }}>{title}</div>
+        <div style={{ fontSize: 13, color: "rgba(17,24,39,0.70)" }}>Sem dados para exibir.</div>
+      </div>
+    );
+  }
+
+  let currentAngle = 0;
+  const describeArc = (cx: number, cy: number, r: number, startAngle: number, endAngle: number) => {
+    const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+      const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+      return {
+        x: centerX + radius * Math.cos(angleInRadians),
+        y: centerY + radius * Math.sin(angleInRadians),
+      };
+    };
+    const start = polarToCartesian(cx, cy, r, endAngle);
+    const end = polarToCartesian(cx, cy, r, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+  };
+
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid rgba(0,0,0,0.06)",
+        borderRadius: 18,
+        padding: 18,
+        boxShadow: "0 8px 30px rgba(15,23,42,0.04)",
+      }}
+    >
+      <div style={{ fontSize: 15, fontWeight: 900, color: "#111827", marginBottom: 14 }}>{title}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16, alignItems: "center" }}>
+        <div style={{ position: "relative", width: 220, height: 220, margin: "0 auto" }}>
+          <svg viewBox="0 0 220 220" width="220" height="220">
+            <circle cx="110" cy="110" r="70" fill="none" stroke="#edf2f7" strokeWidth="34" />
+            {safeRows.map((row, index) => {
+              const valueAngle = total > 0 ? (row.value / total) * 360 : 0;
+              const start = currentAngle;
+              const end = currentAngle + valueAngle;
+              currentAngle = end;
+              return (
+                <path
+                  key={row.label}
+                  d={describeArc(110, 110, 70, start, end)}
+                  fill="none"
+                  stroke={palette[index % palette.length]}
+                  strokeWidth="34"
+                  strokeLinecap="butt"
+                />
+              );
+            })}
+          </svg>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "rgba(17,24,39,0.65)", fontWeight: 800 }}>Projetos</div>
+            <div style={{ fontSize: 30, fontWeight: 900, color: "#111827", lineHeight: 1 }}>{total}</div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          {safeRows.map((row, index) => {
+            const pct = total > 0 ? (row.value / total) * 100 : 0;
+            return (
+              <div
+                key={row.label}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "16px 1fr auto auto",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 12px",
+                  border: "1px solid rgba(0,0,0,0.06)",
+                  borderRadius: 12,
+                  background: "#fafafa",
+                }}
+              >
+                <span style={{ width: 12, height: 12, borderRadius: 999, background: palette[index % palette.length], display: "inline-block" }} />
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>{row.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>{row.value}</span>
+                <span style={{ fontSize: 12, color: "rgba(17,24,39,0.70)", fontWeight: 800 }}>{pct.toFixed(1)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DelayHeatmap({ rows }: { rows: Array<{ label: string; value: number }> }) {
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  const colorFor = (value: number) => {
+    if (value <= 0) return "#ecfdf5";
+    const ratio = value / max;
+    if (ratio >= 0.85) return "#7f1d1d";
+    if (ratio >= 0.65) return "#b91c1c";
+    if (ratio >= 0.45) return "#ef4444";
+    if (ratio >= 0.25) return "#f97316";
+    if (ratio >= 0.12) return "#fdba74";
+    return "#ffedd5";
+  };
+
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid rgba(0,0,0,0.06)",
+        borderRadius: 20,
+        padding: 18,
+        boxShadow: "0 8px 30px rgba(15,23,42,0.04)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>3. Heatmap de atraso por phase</div>
+          <div style={{ fontSize: 12, color: "rgba(17,24,39,0.70)", marginTop: 4 }}>
+            Intensidade baseada na quantidade de projetos com atraso em cada fase.
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(17,24,39,0.68)", fontWeight: 800 }}>
+          <span>Baixo</span>
+          {["#ffedd5", "#fdba74", "#f97316", "#ef4444", "#b91c1c", "#7f1d1d"].map((c) => (
+            <span key={c} style={{ width: 18, height: 10, borderRadius: 999, background: c, display: "inline-block" }} />
+          ))}
+          <span>Alto</span>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        {rows.map((row) => {
+          const bg = colorFor(row.value);
+          const textColor = row.value / max >= 0.65 ? "#fff" : "#111827";
+          return (
+            <div
+              key={row.label}
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                background: bg,
+                color: textColor,
+                border: "1px solid rgba(0,0,0,0.06)",
+                minHeight: 110,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 900 }}>{row.label}</div>
+              <div style={{ fontSize: 32, fontWeight: 900, lineHeight: 1 }}>{row.value}</div>
+              <div style={{ fontSize: 12, opacity: 0.9, fontWeight: 700 }}>projetos atrasados</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectControl() {
   const [projects, setProjects] = useState<AnyObj[]>([]);
   const [loading, setLoading] = useState(false);
@@ -347,6 +531,7 @@ export default function ProjectControl() {
     const operatorMap = new Map<string, any>();
     const phaseStatusCount = new Map<string, number>();
     const projectStatusCount = new Map<string, number>();
+    const delayByPhaseCount = new Map<string, number>();
 
     let totalDaysInPhase = 0;
     let totalDaysInProject = 0;
@@ -363,7 +548,10 @@ export default function ProjectControl() {
       totalDaysInPhase += normLong(p.daysInPhase);
       totalDaysInProject += normLong(p.daysInProject);
       totalHoldDays += normLong(p.totalHoldDays);
-      if (projectStatus === "Delayed" || phaseStatus === "Delayed") delayedProjects += 1;
+      if (projectStatus === "Delayed" || phaseStatus === "Delayed") {
+        delayedProjects += 1;
+        delayByPhaseCount.set(phase, (delayByPhaseCount.get(phase) || 0) + 1);
+      }
 
       if (!phaseMap.has(phase)) {
         phaseMap.set(phase, {
@@ -421,6 +609,12 @@ export default function ProjectControl() {
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
 
+    const projectsByPhaseRows = phaseRows.map((row) => ({ label: row.phase, value: row.total }));
+
+    const delayHeatmapRows = Array.from(new Set(phaseRows.map((row) => row.phase)))
+      .map((phase) => ({ label: phase, value: delayByPhaseCount.get(phase) || 0 }))
+      .sort((a, b) => b.value - a.value);
+
     const projectStatusRows = Array.from(projectStatusCount.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
@@ -434,6 +628,8 @@ export default function ProjectControl() {
       phaseRows,
       operatorRows,
       phaseStatusRows,
+      projectsByPhaseRows,
+      delayHeatmapRows,
       projectStatusRows,
       totalDaysInPhase,
       totalDaysInProject,
@@ -766,20 +962,24 @@ export default function ProjectControl() {
               <PhaseColorChart rows={dashboard.phaseRows} />
             </div>
 
-            <StatusBars title="Status por Phase" rows={dashboard.phaseStatusRows} colorFn={statusColor} />
+            <PieChartCard title="Projetos por Phase" rows={dashboard.projectsByPhaseRows} />
             <StatusBars title="Status por Projeto" rows={dashboard.projectStatusRows} colorFn={statusColor} />
           </div>
 
-          <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.06)", borderRadius: 20, padding: 18, boxShadow: "0 8px 30px rgba(15,23,42,0.04)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>2. Projetos por operador + fase/status + médias</div>
-                <div style={{ fontSize: 12, color: "rgba(17,24,39,0.70)", marginTop: 4 }}>
-                  Exibe o operador, a fase predominante, o status predominante da phase, o status predominante do projeto e as médias de dias.
+          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16 }}>
+            <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.06)", borderRadius: 20, padding: 18, boxShadow: "0 8px 30px rgba(15,23,42,0.04)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>2. Projetos por operador + fase/status + médias</div>
+                  <div style={{ fontSize: 12, color: "rgba(17,24,39,0.70)", marginTop: 4 }}>
+                    Exibe o operador, a fase predominante, o status predominante da phase, o status predominante do projeto e as médias de dias.
+                  </div>
                 </div>
               </div>
+              <OperatorPhaseTable rows={dashboard.operatorRows} />
             </div>
-            <OperatorPhaseTable rows={dashboard.operatorRows} />
+
+            <DelayHeatmap rows={dashboard.delayHeatmapRows} />
           </div>
         </div>
       ) : (
