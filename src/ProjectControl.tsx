@@ -10,12 +10,14 @@ type DynamicField =
   | "operator"
   | "county"
   | "farol"
+  | "phaseColor"
   | "faseAtual"
   | "statusGlobal"
   | "pStatus";
 
 const ENUM_OPTIONS: Record<Exclude<DynamicField, "" | "projectTitle" | "operator" | "county">, string[]> = {
   farol: ["Verde", "Amarelo", "Laranja", "Vermelho"],
+  phaseColor: ["Verde", "Amarelo", "Laranja", "Vermelho"],
   faseAtual: ["Phase 1", "Phase 2", "Phase 3"],
   statusGlobal: ["In Progress", "Concluded", "Delayed", "On Hold"],
   pStatus: ["In Progress", "Concluded", "Delayed", "On Hold"],
@@ -121,6 +123,9 @@ export default function ProjectControl() {
         case "farol":
           res = res.filter((p) => toStr(p.projectColor) === v);
           break;
+        case "phaseColor":
+          res = res.filter((p) => toStr(p.phaseColor) === v);
+          break;
         case "faseAtual":
           res = res.filter((p) => toStr(p.currentPhase) === v);
           break;
@@ -162,6 +167,7 @@ export default function ProjectControl() {
       "Dias Totais",
       "Restante",
       "Cor",
+      "Farol Phase",
       "Inicio P1",
       "Fim P1",
       "Status P1",
@@ -188,6 +194,7 @@ export default function ProjectControl() {
       p.daysInProject,
       p.daysRemaining,
       p.projectColor || "",
+      p.phaseColor || "",
       p.StartDatePhase1 || "",
       p.EndDatePhase1 || "",
       p.StatusPhase1 || "",
@@ -382,6 +389,7 @@ export default function ProjectControl() {
             <option value="operator">Operador (dinâmico)</option>
             <option value="county">County</option>
             <option value="farol">Farol</option>
+            <option value="phaseColor">Farol Phase</option>
             <option value="faseAtual">Fase Atual</option>
             <option value="statusGlobal">Status Global</option>
             <option value="pStatus">P. Status</option>
@@ -444,6 +452,7 @@ export default function ProjectControl() {
             <thead>
               <tr>
                 <th style={S.th}>Farol</th>
+                <th style={S.th}>Farol Phase</th>
                 <th style={S.th}>Projeto</th>
                 <th style={S.th}>Operador</th>
                 <th style={S.th}>Fase Atual</th>
@@ -474,6 +483,10 @@ export default function ProjectControl() {
                 <tr key={p.projectId}>
                   <td style={S.td}>
                     <span style={getDotStyle(p.projectColor)} />
+                  </td>
+
+                  <td style={S.td}>
+                    <span style={getDotStyle(p.phaseColor)} />
                   </td>
 
                   <td style={{ ...S.td, fontWeight: 700 }}>{p.project?.title || p.projectId}</td>
@@ -521,7 +534,7 @@ export default function ProjectControl() {
 
               {pagedProjects.length === 0 && (
                 <tr>
-                  <td style={S.td} colSpan={20}>
+                  <td style={S.td} colSpan={21}>
                     Nenhum registro encontrado.
                   </td>
                 </tr>
