@@ -10,14 +10,12 @@ type DynamicField =
   | "operator"
   | "county"
   | "farol"
-  | "phaseColor"
   | "faseAtual"
   | "statusGlobal"
   | "pStatus";
 
 const ENUM_OPTIONS: Record<Exclude<DynamicField, "" | "projectTitle" | "operator" | "county">, string[]> = {
   farol: ["Verde", "Amarelo", "Laranja", "Vermelho"],
-  phaseColor: ["Verde", "Amarelo", "Laranja", "Vermelho"],
   faseAtual: ["Phase 1", "Phase 2", "Phase 3"],
   statusGlobal: ["In Progress", "Concluded", "Delayed", "On Hold"],
   pStatus: ["In Progress", "Concluded", "Delayed", "On Hold"],
@@ -60,6 +58,7 @@ export default function ProjectControl() {
   // Filtro dinâmico (campo + valor)
   const [dynField, setDynField] = useState<DynamicField>("");
   const [dynValue, setDynValue] = useState("");
+  const [showConcluded, setShowConcluded] = useState(true);
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -92,7 +91,7 @@ export default function ProjectControl() {
   // ✅ Reset automático de página quando muda filtro/pageSize
   useEffect(() => {
     setPage(1);
-  }, [operatorFilter, dynField, dynValue, pageSize]);
+  }, [operatorFilter, dynField, dynValue, pageSize, showConcluded]);
 
   // Se trocar o campo dinâmico, limpa o valor (para evitar “valor inválido”)
   useEffect(() => {
@@ -101,6 +100,11 @@ export default function ProjectControl() {
 
   const filteredProjects = useMemo(() => {
     let res = projects;
+
+    // Mostrar ou ocultar concluídos
+    if (!showConcluded) {
+      res = res.filter((p) => toStr(p.currentPhase) !== "Concluded" && toStr(p.StatusProject) !== "Concluded");
+    }
 
     // Operador (campo fixo)
     if (operatorFilter.trim()) {
@@ -123,9 +127,6 @@ export default function ProjectControl() {
         case "farol":
           res = res.filter((p) => toStr(p.projectColor) === v);
           break;
-        case "phaseColor":
-          res = res.filter((p) => toStr(p.phaseColor) === v);
-          break;
         case "faseAtual":
           res = res.filter((p) => toStr(p.currentPhase) === v);
           break;
@@ -142,7 +143,7 @@ export default function ProjectControl() {
     }
 
     return res;
-  }, [projects, operatorFilter, dynField, dynValue]);
+  }, [projects, operatorFilter, dynField, dynValue, showConcluded]);
 
   // Paginação aplicada ao resultado filtrado
   const total = filteredProjects.length;
@@ -167,7 +168,6 @@ export default function ProjectControl() {
       "Dias Totais",
       "Restante",
       "Cor",
-      "Farol Phase",
       "Inicio P1",
       "Fim P1",
       "Status P1",
@@ -194,7 +194,6 @@ export default function ProjectControl() {
       p.daysInProject,
       p.daysRemaining,
       p.projectColor || "",
-      p.phaseColor || "",
       p.StartDatePhase1 || "",
       p.EndDatePhase1 || "",
       p.StatusPhase1 || "",
@@ -431,13 +430,33 @@ export default function ProjectControl() {
         </div>
 
         {/* Clear */}
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#111827",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showConcluded}
+              onChange={(e) => setShowConcluded(e.target.checked)}
+            />
+            Mostrar concluídos?
+          </label>
+
           <button
             style={S.btnGhost}
             onClick={() => {
               setOperatorFilter("");
               setDynField("");
               setDynValue("");
+              setShowConcluded(true);
             }}
           >
             Limpar Filtro
