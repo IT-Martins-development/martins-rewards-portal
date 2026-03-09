@@ -4,22 +4,33 @@ import { get, post } from "aws-amplify/api";
 
 type AnyObj = Record<string, any>;
 
-type DynamicField =
-  | ""
-  | "projectTitle"
-  | "operator"
-  | "county"
-  | "farol"
-  | "faseAtual"
-  | "statusGlobal"
-  | "pStatus";
+type PageSize = 10 | 50 | 100;
 
-const ENUM_OPTIONS: Record<Exclude<DynamicField, "" | "projectTitle" | "operator" | "county">, string[]> = {
-  farol: ["Verde", "Amarelo", "Laranja", "Vermelho"],
-  faseAtual: ["Phase 1", "Phase 2", "Phase 3"],
-  statusGlobal: ["In Progress", "Concluded", "Delayed", "On Hold"],
-  pStatus: ["In Progress", "Concluded", "Delayed", "On Hold"],
+type FiltersState = {
+  operator: string;
+  projectTitle: string;
+  county: string;
+  farol: string;
+  phaseFarol: string;
+  faseAtual: string;
+  statusGlobal: string;
+  pStatus: string;
 };
+
+const INITIAL_FILTERS: FiltersState = {
+  operator: "",
+  projectTitle: "",
+  county: "",
+  farol: "",
+  phaseFarol: "",
+  faseAtual: "",
+  statusGlobal: "",
+  pStatus: "",
+};
+
+const COLOR_OPTIONS = ["Verde", "Amarelo", "Laranja", "Vermelho"];
+const FASE_ATUAL_OPTIONS = ["Phase 1", "Phase 2", "Phase 3", "Concluded"];
+const STATUS_OPTIONS = ["In Progress", "Concluded", "Delayed", "On Hold"];
 
 function normLong(v: any, fallback = 0) {
   if (v?.$numberLong) return parseInt(v.$numberLong, 10);
@@ -37,6 +48,10 @@ function includesI(hay: any, needle: string) {
   return h.includes(n);
 }
 
+function normalizeColorValue(value: any) {
+  return toStr(value).trim();
+}
+
 export default function ProjectControl() {
   const [projects, setProjects] = useState<AnyObj[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,15 +64,11 @@ export default function ProjectControl() {
   const [saveError, setSaveError] = useState<string>("");
 
   // Paginação
-  const [pageSize, setPageSize] = useState<10 | 50 | 100>(10);
+  const [pageSize, setPageSize] = useState<PageSize>(10);
   const [page, setPage] = useState(1);
 
-  // Filtro operador (fixo, pedido por você)
-  const [operatorFilter, setOperatorFilter] = useState("");
-
-  // Filtro dinâmico (campo + valor)
-  const [dynField, setDynField] = useState<DynamicField>("");
-  const [dynValue, setDynValue] = useState("");
+  // Filtros combináveis
+  const [filters, setFilters] = useState<FiltersState>(INITIAL_FILTERS);
   const [showConcluded, setShowConcluded] = useState(true);
 
   const fetchProjects = async () => {
@@ -74,6 +85,8 @@ export default function ProjectControl() {
         daysInProject: normLong(p.daysInProject),
         daysRemaining: normLong(p.daysRemaining),
         totalHoldDays: normLong(p.totalHoldDays),
+        projectColor: normalizeColorValue(p.projectColor),
+        phaseColor: normalizeColorValue(p.phaseColor),
       }));
 
       setProjects(normalized);
@@ -88,64 +101,52 @@ export default function ProjectControl() {
     void fetchProjects();
   }, []);
 
-  // ✅ Reset automático de página quando muda filtro/pageSize
   useEffect(() => {
     setPage(1);
-  }, [operatorFilter, dynField, dynValue, pageSize, showConcluded]);
+  }, [filters, pageSize, showConcluded]);
 
-  // Se trocar o campo dinâmico, limpa o valor (para evitar “valor inválido”)
-  useEffect(() => {
-    setDynValue("");
-  }, [dynField]);
+  const setFilter = <K extends keyof FiltersState>(key: K, value: FiltersState[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters(INITIAL_FILTERS);
+    setShowConcluded(true);
+  };
 
   const filteredProjects = useMemo(() => {
-    let res = projects;
+    return projects.filter((p) => {
+      const projectTitle = p.project?.title || "";
+      const operator = p.majorityOperatorName || "";
+      const county = p.county || "";
+      const currentPhase = p.currentPhase || "";
+      const phaseStatus = p.phaseStatus || "";
+      const globalStatus = p.StatusProject || "";
+      const projectFarol = normalizeColorValue(p.projectColor);
+      const phaseFarol = normalizeColorValue(p.phaseColor);
 
-    // Mostrar ou ocultar concluídos
-    if (!showConcluded) {
-      res = res.filter((p) => toStr(p.currentPhase) !== "Concluded" && toStr(p.StatusProject) !== "Concluded");
-    }
+      if (!showConcluded) {
+        const isConcluded =
+          toStr(currentPhase).trim().toLowerCase() === "concluded" ||
+          toStr(phaseStatus).trim().toLowerCase() === "concluded" ||
+          toStr(globalStatus).trim().toLowerCase() === "concluded";
 
-    // Operador (campo fixo)
-    if (operatorFilter.trim()) {
-      res = res.filter((p) => includesI(p.majorityOperatorName, operatorFilter.trim()));
-    }
-
-    // Dinâmico
-    const v = dynValue.trim();
-    if (dynField && v) {
-      switch (dynField) {
-        case "projectTitle":
-          res = res.filter((p) => includesI(p.project?.title, v));
-          break;
-        case "operator":
-          res = res.filter((p) => includesI(p.majorityOperatorName, v));
-          break;
-        case "county":
-          res = res.filter((p) => includesI(p.county, v));
-          break;
-        case "farol":
-          res = res.filter((p) => toStr(p.projectColor) === v);
-          break;
-        case "faseAtual":
-          res = res.filter((p) => toStr(p.currentPhase) === v);
-          break;
-        case "statusGlobal":
-          res = res.filter((p) => toStr(p.StatusProject) === v);
-          break;
-        case "pStatus":
-          // ✅ P.Status agora pega phaseStatus
-          res = res.filter((p) => toStr(p.phaseStatus) === v);
-          break;
-        default:
-          break;
+        if (isConcluded) return false;
       }
-    }
 
-    return res;
-  }, [projects, operatorFilter, dynField, dynValue, showConcluded]);
+      if (filters.operator.trim() && !includesI(operator, filters.operator.trim())) return false;
+      if (filters.projectTitle.trim() && !includesI(projectTitle, filters.projectTitle.trim())) return false;
+      if (filters.county.trim() && !includesI(county, filters.county.trim())) return false;
+      if (filters.farol && projectFarol !== filters.farol) return false;
+      if (filters.phaseFarol && phaseFarol !== filters.phaseFarol) return false;
+      if (filters.faseAtual && toStr(currentPhase) !== filters.faseAtual) return false;
+      if (filters.statusGlobal && toStr(globalStatus) !== filters.statusGlobal) return false;
+      if (filters.pStatus && toStr(phaseStatus) !== filters.pStatus) return false;
 
-  // Paginação aplicada ao resultado filtrado
+      return true;
+    });
+  }, [projects, filters, showConcluded]);
+
   const total = filteredProjects.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -153,7 +154,6 @@ export default function ProjectControl() {
   const endIdx = Math.min(startIdx + pageSize, total);
   const pagedProjects = filteredProjects.slice(startIdx, endIdx);
 
-  // --- EXPORTAÇÃO MASTER ---
   const exportCsv = () => {
     const headers = [
       "ID",
@@ -167,7 +167,8 @@ export default function ProjectControl() {
       "Dias Fase",
       "Dias Totais",
       "Restante",
-      "Cor",
+      "Farol",
+      "Farol Phase",
       "Inicio P1",
       "Fim P1",
       "Status P1",
@@ -185,7 +186,6 @@ export default function ProjectControl() {
       `"${p.project?.title || ""}"`,
       `"${p.majorityOperatorName || ""}"`,
       p.currentPhase || "",
-      // ✅ P.Status = phaseStatus
       p.phaseStatus || "",
       p.StatusProject || "",
       p.county || "",
@@ -194,6 +194,7 @@ export default function ProjectControl() {
       p.daysInProject,
       p.daysRemaining,
       p.projectColor || "",
+      p.phaseColor || "",
       p.StartDatePhase1 || "",
       p.EndDatePhase1 || "",
       p.StatusPhase1 || "",
@@ -297,10 +298,17 @@ export default function ProjectControl() {
       whiteSpace: "nowrap",
     },
     td: { padding: "10px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: "#111827" },
+    switchWrap: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      height: 42,
+      whiteSpace: "nowrap",
+      fontSize: 13,
+      color: "#111827",
+      fontWeight: 700,
+    },
   };
-
-  const dynIsEnum = dynField in ENUM_OPTIONS;
-  const dynEnumOptions = dynIsEnum ? (ENUM_OPTIONS as any)[dynField] : [];
 
   const openJustify = (p: AnyObj) => {
     setSaveError("");
@@ -358,90 +366,116 @@ export default function ProjectControl() {
         </div>
       </div>
 
-      {/* ✅ Barra de filtros + paginação */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1.2fr 1fr 1fr 0.8fr 0.8fr",
+          gridTemplateColumns: "repeat(4, minmax(180px, 1fr))",
           gap: 12,
           marginBottom: 14,
           alignItems: "end",
         }}
       >
-        {/* Operador fixo */}
         <div>
           <span style={S.label}>Operador</span>
           <input
             style={S.input}
             placeholder="Digite o nome do operador"
-            value={operatorFilter}
-            onChange={(e) => setOperatorFilter(e.target.value)}
+            value={filters.operator}
+            onChange={(e) => setFilter("operator", e.target.value)}
           />
         </div>
 
-        {/* Filtro dinâmico */}
         <div>
-          <span style={S.label}>Filtro (Campo)</span>
-          <select style={S.input} value={dynField} onChange={(e) => setDynField(e.target.value as DynamicField)}>
-            <option value="">Selecione</option>
-            <option value="projectTitle">Projeto</option>
-            <option value="operator">Operador (dinâmico)</option>
-            <option value="county">County</option>
-            <option value="farol">Farol</option>
-            <option value="phaseColor">Farol Phase</option>
-            <option value="faseAtual">Fase Atual</option>
-            <option value="statusGlobal">Status Global</option>
-            <option value="pStatus">P. Status</option>
+          <span style={S.label}>Projeto</span>
+          <input
+            style={S.input}
+            placeholder="Digite o nome do projeto"
+            value={filters.projectTitle}
+            onChange={(e) => setFilter("projectTitle", e.target.value)}
+          />
+        </div>
+
+        <div>
+          <span style={S.label}>County</span>
+          <input
+            style={S.input}
+            placeholder="Digite o county"
+            value={filters.county}
+            onChange={(e) => setFilter("county", e.target.value)}
+          />
+        </div>
+
+        <div>
+          <span style={S.label}>Farol Projeto</span>
+          <select style={S.input} value={filters.farol} onChange={(e) => setFilter("farol", e.target.value)}>
+            <option value="">Todos</option>
+            {COLOR_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
           </select>
         </div>
 
         <div>
-          <span style={S.label}>Valor</span>
-
-          {/* ✅ Dropdown quando enumerado; senão input livre */}
-          {dynField && dynIsEnum ? (
-            <select style={S.input} value={dynValue} onChange={(e) => setDynValue(e.target.value)}>
-              <option value="">Selecione um valor</option>
-              {dynEnumOptions.map((opt: string) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              style={S.input}
-              placeholder={dynField ? "Digite o valor..." : "Selecione um campo acima"}
-              disabled={!dynField}
-              value={dynValue}
-              onChange={(e) => setDynValue(e.target.value)}
-            />
-          )}
+          <span style={S.label}>Farol Phase</span>
+          <select style={S.input} value={filters.phaseFarol} onChange={(e) => setFilter("phaseFarol", e.target.value)}>
+            <option value="">Todos</option>
+            {COLOR_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Page size */}
+        <div>
+          <span style={S.label}>Fase Atual</span>
+          <select style={S.input} value={filters.faseAtual} onChange={(e) => setFilter("faseAtual", e.target.value)}>
+            <option value="">Todos</option>
+            {FASE_ATUAL_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <span style={S.label}>Global Status</span>
+          <select style={S.input} value={filters.statusGlobal} onChange={(e) => setFilter("statusGlobal", e.target.value)}>
+            <option value="">Todos</option>
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <span style={S.label}>P. Status</span>
+          <select style={S.input} value={filters.pStatus} onChange={(e) => setFilter("pStatus", e.target.value)}>
+            <option value="">Todos</option>
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div>
           <span style={S.label}>Itens por página</span>
-          <select style={S.input} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value) as any)}>
+          <select style={S.input} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value) as PageSize)}>
             <option value={10}>10</option>
             <option value={50}>50</option>
             <option value={100}>100</option>
           </select>
         </div>
 
-        {/* Clear */}
-        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 13,
-              fontWeight: 700,
-              color: "#111827",
-              whiteSpace: "nowrap",
-            }}
-          >
+        <div style={{ display: "flex", alignItems: "flex-end" }}>
+          <label style={S.switchWrap}>
             <input
               type="checkbox"
               checked={showConcluded}
@@ -449,25 +483,18 @@ export default function ProjectControl() {
             />
             Mostrar concluídos?
           </label>
+        </div>
 
-          <button
-            style={S.btnGhost}
-            onClick={() => {
-              setOperatorFilter("");
-              setDynField("");
-              setDynValue("");
-              setShowConcluded(true);
-            }}
-          >
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end" }}>
+          <button style={S.btnGhost} onClick={clearFilters}>
             Limpar Filtro
           </button>
         </div>
       </div>
 
-      {/* Tabela */}
       <div style={{ background: "white", borderRadius: 12, border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1500 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1650 }}>
             <thead>
               <tr>
                 <th style={S.th}>Farol</th>
@@ -481,8 +508,6 @@ export default function ProjectControl() {
                 <th style={S.th}>D. Fase</th>
                 <th style={S.th}>D. Totais</th>
                 <th style={S.th}>Restante</th>
-
-                {/* ✅ Campos novos ao final */}
                 <th style={S.th}>Start P1</th>
                 <th style={S.th}>End P1</th>
                 <th style={S.th}>Status P1</th>
@@ -492,7 +517,6 @@ export default function ProjectControl() {
                 <th style={S.th}>Start P3</th>
                 <th style={S.th}>End P3</th>
                 <th style={S.th}>Status P3</th>
-
                 <th style={S.th}>Ações</th>
               </tr>
             </thead>
@@ -509,16 +533,10 @@ export default function ProjectControl() {
                   </td>
 
                   <td style={{ ...S.td, fontWeight: 700 }}>{p.project?.title || p.projectId}</td>
-
                   <td style={S.td}>{p.majorityOperatorName || "-"}</td>
-
                   <td style={S.td}>{p.currentPhase || "-"}</td>
-
-                  {/* ✅ P.Status = phaseStatus */}
                   <td style={S.td}>{p.phaseStatus || "-"}</td>
-
                   <td style={S.td}>{p.StatusProject || "-"}</td>
-
                   <td style={S.td}>{p.totalHoldDays || 0}</td>
                   <td style={S.td}>{p.daysInPhase}</td>
                   <td style={S.td}>{p.daysInProject}</td>
@@ -527,24 +545,18 @@ export default function ProjectControl() {
                     {p.daysRemaining}
                   </td>
 
-                  {/* ✅ Campos novos ao final */}
                   <td style={S.td}>{p.StartDatePhase1 || ""}</td>
                   <td style={S.td}>{p.EndDatePhase1 || ""}</td>
                   <td style={S.td}>{p.StatusPhase1 || ""}</td>
-
                   <td style={S.td}>{p.StartDatePhase2 || ""}</td>
                   <td style={S.td}>{p.EndDatePhase2 || ""}</td>
                   <td style={S.td}>{p.StatusPhase2 || ""}</td>
-
                   <td style={S.td}>{p.StartDatePhase3 || ""}</td>
                   <td style={S.td}>{p.EndDatePhase3 || ""}</td>
                   <td style={S.td}>{p.StatusPhase3 || ""}</td>
 
                   <td style={S.td}>
-                    <button
-                      style={{ ...S.btnGhost, padding: "6px 10px", height: "auto" }}
-                      onClick={() => openJustify(p)}
-                    >
+                    <button style={{ ...S.btnGhost, padding: "6px 10px", height: "auto" }} onClick={() => openJustify(p)}>
                       Justificar
                     </button>
                   </td>
@@ -562,7 +574,6 @@ export default function ProjectControl() {
           </table>
         </div>
 
-        {/* Rodapé de paginação */}
         <div
           style={{
             display: "flex",
@@ -602,7 +613,6 @@ export default function ProjectControl() {
         </div>
       </div>
 
-      {/* ✅ Modal com zIndex alto + pointerEvents (corrige “botão não clica”) */}
       {isModalOpen && (
         <div
           onClick={closeJustify}
