@@ -19,6 +19,7 @@ type Filters = {
 const COLOR_LABELS = ["Verde", "Amarelo", "Laranja", "Vermelho"] as const;
 const STATUS_OPTIONS = ["In Progress", "Concluded", "Delayed", "On Hold"] as const;
 const PHASE_OPTIONS = ["Phase 1", "Phase 2", "Phase 3"] as const;
+const PHASE_ORDER = ["Phase 1", "Phase 2", "Phase 3", "Concluded"] as const;
 const COLOR_MAP: Record<string, string> = {
   Verde: "#22c55e",
   Amarelo: "#eab308",
@@ -76,6 +77,11 @@ function getGlobalStatusValue(p: AnyObj) {
 
 function getPhaseStatusValue(p: AnyObj) {
   return toStr(p.phaseStatus || p.pStatus || "Sem status") || "Sem status";
+}
+
+function phaseOrderIndex(phase: string) {
+  const idx = PHASE_ORDER.indexOf(phase as any);
+  return idx >= 0 ? idx : 999;
 }
 
 function isConcludedProject(p: AnyObj) {
@@ -218,6 +224,62 @@ function OperatorPhaseTable({ rows }: { rows: Array<any> }) {
               <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>{row.topProjectStatus}</td>
               <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontWeight: 800 }}>{row.avgDaysInPhase}</td>
               <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontWeight: 800 }}>{row.avgDaysInProject}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CriticalProjectsTable({ rows }: { rows: Array<any> }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+        <thead>
+          <tr>
+            {["Projeto", "Operador", "Phase", "Status Projeto", "Status Phase", "Farol Projeto", "Farol Phase", "Dias Restantes"].map((h) => (
+              <th
+                key={h}
+                style={{
+                  textAlign: "left",
+                  padding: "12px 10px",
+                  fontSize: 11,
+                  color: "rgba(17,24,39,0.70)",
+                  fontWeight: 900,
+                  borderBottom: "1px solid rgba(0,0,0,0.08)",
+                  background: "#fbfbfc",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, idx) => (
+            <tr key={`${row.projectId || row.projectTitle || row.project}-${idx}`}>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontWeight: 800 }}>{row.projectTitle}</td>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>{row.operator}</td>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>{row.phase}</td>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>{row.projectStatus}</td>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>{row.phaseStatus}</td>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={dotStyle(row.projectColor)} />
+                  <span>{row.projectColor}</span>
+                </div>
+              </td>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={dotStyle(row.phaseColor)} />
+                  <span>{row.phaseColor}</span>
+                </div>
+              </td>
+              <td style={{ padding: "12px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontWeight: 900, color: row.daysRemaining < 0 ? "#b91c1c" : "#15803d" }}>
+                {row.daysRemaining}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -528,26 +590,17 @@ export default function ProjectControl() {
 
   const dashboard = useMemo(() => {
     const phaseMap = new Map<string, { phase: string; total: number; colors: Record<string, number> }>();
-    const operatorMap = new Map<string, any>();
-    const phaseStatusCount = new Map<string, number>();
     const projectStatusCount = new Map<string, number>();
     const delayByPhaseCount = new Map<string, number>();
 
-    let totalDaysInPhase = 0;
-    let totalDaysInProject = 0;
-    let totalHoldDays = 0;
     let delayedProjects = 0;
 
     filteredProjects.forEach((p) => {
       const phase = getPhaseValue(p);
       const phaseColor = getPhaseColorValue(p);
-      const operator = toStr(p.majorityOperatorName || "Sem operador") || "Sem operador";
       const phaseStatus = getPhaseStatusValue(p);
       const projectStatus = getGlobalStatusValue(p);
 
-      totalDaysInPhase += normLong(p.daysInPhase);
-      totalDaysInProject += normLong(p.daysInProject);
-      totalHoldDays += normLong(p.totalHoldDays);
       if (projectStatus === "Delayed" || phaseStatus === "Delayed") {
         delayedProjects += 1;
         delayByPhaseCount.set(phase, (delayByPhaseCount.get(phase) || 0) + 1);
@@ -564,60 +617,58 @@ export default function ProjectControl() {
       phaseEntry.total += 1;
       if (phaseEntry.colors[phaseColor] !== undefined) phaseEntry.colors[phaseColor] += 1;
 
-      phaseStatusCount.set(phaseStatus, (phaseStatusCount.get(phaseStatus) || 0) + 1);
       projectStatusCount.set(projectStatus, (projectStatusCount.get(projectStatus) || 0) + 1);
-
-      if (!operatorMap.has(operator)) {
-        operatorMap.set(operator, {
-          operator,
-          total: 0,
-          daysInPhase: [] as number[],
-          daysInProject: [] as number[],
-          phases: new Map<string, number>(),
-          phaseStatuses: new Map<string, number>(),
-          projectStatuses: new Map<string, number>(),
-        });
-      }
-      const op = operatorMap.get(operator)!;
-      op.total += 1;
-      op.daysInPhase.push(normLong(p.daysInPhase));
-      op.daysInProject.push(normLong(p.daysInProject));
-      op.phases.set(phase, (op.phases.get(phase) || 0) + 1);
-      op.phaseStatuses.set(phaseStatus, (op.phaseStatuses.get(phaseStatus) || 0) + 1);
-      op.projectStatuses.set(projectStatus, (op.projectStatuses.get(projectStatus) || 0) + 1);
     });
 
-    const phaseRows = Array.from(phaseMap.values()).sort((a, b) => b.total - a.total);
-
-    const operatorRows = Array.from(operatorMap.values())
-      .map((op) => {
-        const pickTop = (m: Map<string, number>) =>
-          Array.from(m.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-        return {
-          operator: op.operator,
-          total: op.total,
-          topPhase: pickTop(op.phases),
-          topPhaseStatus: pickTop(op.phaseStatuses),
-          topProjectStatus: pickTop(op.projectStatuses),
-          avgDaysInPhase: avg(op.daysInPhase).toFixed(1),
-          avgDaysInProject: avg(op.daysInProject).toFixed(1),
-        };
-      })
-      .sort((a, b) => b.total - a.total);
-
-    const phaseStatusRows = Array.from(phaseStatusCount.entries())
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
+    const phaseRows = Array.from(phaseMap.values()).sort((a, b) => {
+      const diff = phaseOrderIndex(a.phase) - phaseOrderIndex(b.phase);
+      return diff !== 0 ? diff : b.total - a.total;
+    });
 
     const projectsByPhaseRows = phaseRows.map((row) => ({ label: row.phase, value: row.total }));
 
-    const delayHeatmapRows = Array.from(new Set(phaseRows.map((row) => row.phase)))
-      .map((phase) => ({ label: phase, value: delayByPhaseCount.get(phase) || 0 }))
-      .sort((a, b) => b.value - a.value);
+    const delayHeatmapRows = phaseRows
+      .map((row) => ({ label: row.phase, value: delayByPhaseCount.get(row.phase) || 0 }))
+      .sort((a, b) => {
+        const diff = phaseOrderIndex(a.label) - phaseOrderIndex(b.label);
+        return diff !== 0 ? diff : b.value - a.value;
+      });
 
     const projectStatusRows = Array.from(projectStatusCount.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
+
+    const colorPriority = (color: string) => ({ Vermelho: 4, Laranja: 3, Amarelo: 2, Verde: 1 }[color] || 0);
+    const statusPriority = (status: string) => ({ Delayed: 4, "On Hold": 3, "In Progress": 2, Concluded: 1 }[status] || 0);
+
+    const criticalProjectsRows = [...filteredProjects]
+      .map((p) => ({
+        projectId: p.projectId,
+        projectTitle: toStr(p.project?.title || p.projectId || "-"),
+        operator: toStr(p.majorityOperatorName || "-"),
+        phase: getPhaseValue(p),
+        projectStatus: getGlobalStatusValue(p),
+        phaseStatus: getPhaseStatusValue(p),
+        projectColor: getProjectColorValue(p),
+        phaseColor: getPhaseColorValue(p),
+        daysRemaining: normLong(p.daysRemaining),
+      }))
+      .sort((a, b) => {
+        const delayedDiff = statusPriority(b.projectStatus) - statusPriority(a.projectStatus);
+        if (delayedDiff !== 0) return delayedDiff;
+
+        const phaseStatusDiff = statusPriority(b.phaseStatus) - statusPriority(a.phaseStatus);
+        if (phaseStatusDiff !== 0) return phaseStatusDiff;
+
+        const farolDiff = colorPriority(b.phaseColor) - colorPriority(a.phaseColor);
+        if (farolDiff !== 0) return farolDiff;
+
+        const projFarolDiff = colorPriority(b.projectColor) - colorPriority(a.projectColor);
+        if (projFarolDiff !== 0) return projFarolDiff;
+
+        return a.daysRemaining - b.daysRemaining;
+      })
+      .slice(0, 10);
 
     return {
       totalProjects: filteredProjects.length,
@@ -626,14 +677,10 @@ export default function ProjectControl() {
       avgHoldDays: avg(filteredProjects.map((p) => normLong(p.totalHoldDays))).toFixed(1),
       delayedProjects,
       phaseRows,
-      operatorRows,
-      phaseStatusRows,
       projectsByPhaseRows,
       delayHeatmapRows,
       projectStatusRows,
-      totalDaysInPhase,
-      totalDaysInProject,
-      totalHoldDays,
+      criticalProjectsRows,
     };
   }, [filteredProjects]);
 
@@ -966,17 +1013,17 @@ export default function ProjectControl() {
             <StatusBars title="Status por Projeto" rows={dashboard.projectStatusRows} colorFn={statusColor} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 16 }}>
             <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.06)", borderRadius: 20, padding: 18, boxShadow: "0 8px 30px rgba(15,23,42,0.04)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>2. Projetos por operador + fase/status + médias</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>2. Top 10 Projetos Críticos</div>
                   <div style={{ fontSize: 12, color: "rgba(17,24,39,0.70)", marginTop: 4 }}>
-                    Exibe o operador, a fase predominante, o status predominante da phase, o status predominante do projeto e as médias de dias.
+                    Ordenado por criticidade: status do projeto, status da phase, farol da phase, farol do projeto e dias restantes.
                   </div>
                 </div>
               </div>
-              <OperatorPhaseTable rows={dashboard.operatorRows} />
+              <CriticalProjectsTable rows={dashboard.criticalProjectsRows} />
             </div>
 
             <DelayHeatmap rows={dashboard.delayHeatmapRows} />
