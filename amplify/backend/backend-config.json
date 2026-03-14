@@ -73,28 +73,28 @@
       "serviceType": "imported"
     }
   },
-"function": {
-  "RewardsMongo": {
-    "build": true,
-    "providerPlugin": "awscloudformation",
-    "service": "Lambda"
+  "function": {
+    "RewardsMongo": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
+    "getOperatorDivergences": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
+    "getProjectsStatus": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
+    "getProjectsTimelineByPhase": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
   },
-  "getOperatorDivergences": {
-    "build": true,
-    "providerPlugin": "awscloudformation",
-    "service": "Lambda"
-  },
-  "getProjectsStatus": {
-    "build": true,
-    "providerPlugin": "awscloudformation",
-    "service": "Lambda"
-  },
-  "getProjectsTimelineByPhase": {
-    "build": true,
-    "providerPlugin": "awscloudformation",
-    "service": "Lambda"
-  }
-},
   "parameters": {
     "AMPLIFY_auth_martinsrewards69c1614b_nativeClientId": {
       "usedBy": [
