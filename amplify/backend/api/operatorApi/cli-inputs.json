@@ -14,6 +14,13 @@
       "permissions": {
         "setting": "open"
       }
+    },
+    "/projects-timeline-by-phase": {
+      "name": "/projects-timeline-by-phase",
+      "lambdaFunction": "getProjectsTimelineByPhase",
+      "permissions": {
+        "setting": "open"
+      }
     }
   }
 }
