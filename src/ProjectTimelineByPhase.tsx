@@ -72,6 +72,24 @@ const CURRENT_PHASE_OPTIONS = ["Phase 1", "Phase 2", "Phase 3", "Concluded"];
 const PHASE_STATUS_OPTIONS = ["Todo", "Pending", "In Progress", "Done", "Concluded", "Delayed", "On Hold"];
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
 
+const FIXED_COLUMN_WIDTHS = [220, 140, 120, 110, 120, 140, 170, 130] as const;
+const FIXED_COLUMN_LEFTS = FIXED_COLUMN_WIDTHS.map((_, index) =>
+  FIXED_COLUMN_WIDTHS.slice(0, index).reduce((sum, width) => sum + width, 0)
+);
+
+function getStickyCellStyle(index: number, isHeader = false): React.CSSProperties {
+  return {
+    position: "sticky",
+    left: FIXED_COLUMN_LEFTS[index],
+    zIndex: isHeader ? 5 : 3,
+    background: "#fff",
+    minWidth: FIXED_COLUMN_WIDTHS[index],
+    width: FIXED_COLUMN_WIDTHS[index],
+    maxWidth: FIXED_COLUMN_WIDTHS[index],
+    boxShadow: index === FIXED_COLUMN_WIDTHS.length - 1 ? "2px 0 0 rgba(0,0,0,0.06)" : undefined,
+  };
+}
+
 
 const TIMELINE_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/projects-timeline-by-phase";
 const SUBVENDORS_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/subvendors-options";
@@ -697,6 +715,26 @@ export default function ProjectTimelineByPhase() {
     setTaskModal({ open: false, row: null, taskName: "", task: null });
   }
 
+  function handleTaskStatusChange(newStatus: string) {
+    setTaskForm((prev) => {
+      const next = { ...prev, status: newStatus };
+
+      if ((newStatus === "InProgress" || newStatus === "Done") && !next.startDate) {
+        next.startDate = todayInputValue();
+      }
+
+      if (newStatus === "Done") {
+        if (!next.completedDate) {
+          next.completedDate = todayInputValue();
+        }
+      } else {
+        next.completedDate = "";
+      }
+
+      return next;
+    });
+  }
+
   async function saveTaskUpdate() {
     if (!taskModal.row || !taskModal.task?.taskId) {
       setError("Task inválida para edição.");
@@ -1013,14 +1051,14 @@ export default function ProjectTimelineByPhase() {
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 2200 }}>
             <thead>
               <tr>
-                <th style={S.th}>Projeto</th>
-                <th style={S.th}>Operador</th>
-                <th style={S.th}>County</th>
-                <th style={S.th}>Farol Projeto</th>
-                <th style={S.th}>Fase Atual</th>
-                <th style={S.th}>Status da Phase</th>
-                <th style={S.th}>Duração de Dias da Phase</th>
-                <th style={S.th}>Farol da Phase</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(0, true) }}>Projeto</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(1, true) }}>Operador</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(2, true) }}>County</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(3, true) }}>Farol Projeto</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(4, true) }}>Fase Atual</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(5, true) }}>Status da Phase</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(6, true) }}>Duração de Dias da Phase</th>
+                <th style={{ ...S.th, ...getStickyCellStyle(7, true) }}>Farol da Phase</th>
                 {taskColumns.map((taskName) => (
                   <th key={taskName} style={S.th}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 130 }}>
@@ -1034,14 +1072,14 @@ export default function ProjectTimelineByPhase() {
             <tbody>
               {pagedRows.map((row) => (
                 <tr key={`${row.projectId}-${filters.phase}`}>
-                  <td style={{ ...S.td, fontWeight: 800 }}><a href={`${PROJECT_DETAILS_BASE_URL}/${row.projectId}`} target="_blank" rel="noreferrer" style={{ color: "#7A5A3A", textDecoration: "none", fontWeight: 800 }}>{row.title}</a></td>
-                  <td style={S.td}>{row.operator}</td>
-                  <td style={S.td}>{row.county}</td>
-                  <td style={S.td}><span style={getProjectColorDot(row.projectColor)} /></td>
-                  <td style={S.td}>{row.currentPhase || "-"}</td>
-                  <td style={S.td}>{row.phaseStatus || "Null"}</td>
-                  <td style={S.td}>{row.phaseDurationDays}</td>
-                  <td style={S.td}><span style={getProjectColorDot(row.phaseColor)} /></td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(0), fontWeight: 800 }}><a href={`${PROJECT_DETAILS_BASE_URL}/${row.projectId}`} target="_blank" rel="noreferrer" style={{ color: "#7A5A3A", textDecoration: "none", fontWeight: 800 }}>{row.title}</a></td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(1) }}>{row.operator}</td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(2) }}>{row.county}</td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(3) }}><span style={getProjectColorDot(row.projectColor)} /></td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(4) }}>{row.currentPhase || "-"}</td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(5) }}>{row.phaseStatus || "Null"}</td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(6) }}>{row.phaseDurationDays}</td>
+                  <td style={{ ...S.td, ...getStickyCellStyle(7) }}><span style={getProjectColorDot(row.phaseColor)} /></td>
                   {taskColumns.map((taskName) => (
                     <td key={taskName} style={S.td}><StatusIcon task={row.tasks[taskName]} onClick={() => openTaskModal(row, taskName, row.tasks[taskName])} /></td>
                   ))}
@@ -1101,7 +1139,7 @@ export default function ProjectTimelineByPhase() {
 
                 <div>
                   <span style={S.label}>Status</span>
-                  <select style={S.input} value={taskForm.status} onChange={(e) => setTaskForm((p) => ({ ...p, status: e.target.value, completedDate: e.target.value === "Done" ? (p.completedDate || todayInputValue()) : p.completedDate }))}>
+                  <select style={S.input} value={taskForm.status} onChange={(e) => handleTaskStatusChange(e.target.value)}>
                     <option value="Todo">Todo</option>
                     <option value="InProgress">InProgress</option>
                     <option value="Done">Done</option>
