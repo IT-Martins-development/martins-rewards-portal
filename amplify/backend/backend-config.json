@@ -73,7 +73,7 @@
       "serviceType": "imported"
     }
   },
- "function": {
+"function": {
   "RewardsMongo": {
     "build": true,
     "providerPlugin": "awscloudformation",
