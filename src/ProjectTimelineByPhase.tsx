@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { get } from "aws-amplify/api";
 
 type AnyObj = Record<string, any>;
 type PhaseKey = "Pre Construction" | "Phase 1" | "Phase 2" | "Phase 3" | "Utilities" | "Supplies";
@@ -55,6 +54,9 @@ const COLOR_OPTIONS = ["Verde", "Amarelo", "Laranja", "Vermelho"];
 const CURRENT_PHASE_OPTIONS = ["Phase 1", "Phase 2", "Phase 3", "Concluded"];
 const PHASE_STATUS_OPTIONS = ["Todo", "Pending", "In Progress", "Done", "Concluded", "Delayed", "On Hold"];
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
+
+
+const TIMELINE_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/projects-timeline-by-phase";
 
 const TASK_ORDER: Record<PhaseKey, string[]> = {
   "Pre Construction": [
@@ -383,6 +385,36 @@ function normalizeTaskDoc(doc: AnyObj): TaskDoc | null {
   };
 }
 
+function normalizeTimelineApiRow(row: AnyObj, phase: PhaseKey): { project: ProjectStatusRow; tasks: TaskDoc[] } {
+  const projectId = toStr(row.projectId || row.project?._id || row.project?.id || row._id);
+  const project: ProjectStatusRow = {
+    projectId,
+    title: toStr(row.project || row.title || row.projectTitle || "Sem projeto"),
+    operator: toStr(row.operator || row.majorityOperatorName || "-"),
+    county: toStr(row.county || "-"),
+    projectColor: toStr(row.projectColor || "Sem cor"),
+    currentPhase: toStr(row.currentPhase || "-"),
+    phaseColor: toStr(row.phaseColor || "Cinza") || "Cinza",
+    phaseStatus: toStr(row.phaseStatus || "Null") || "Null",
+    phaseDurationDays: normNumber(row.phaseDays, 0),
+    raw: row,
+  };
+
+  const tasks: TaskDoc[] = Object.entries((row.tasks || {}) as Record<string, AnyObj>)
+    .map(([taskTitle, taskValue]) => {
+      if (!taskValue) return null;
+      return normalizeTaskDoc({
+        ...taskValue,
+        title: taskTitle,
+        projectId,
+        phase,
+      });
+    })
+    .filter(Boolean) as TaskDoc[];
+
+  return { project, tasks };
+}
+
 function taskVisual(task: TaskDoc | null) {
   if (!task) {
     return { className: "null", date: "-", label: "Nulo", csvStatus: "Null" as TaskStatus };
@@ -569,18 +601,32 @@ export default function ProjectTimelineByPhase() {
     setLoading(true);
     setError("");
     try {
-      const [statusResp, tasksResp] = await Promise.all([
-        get({ apiName: "operatorApi", path: "/view-project-status" }).response,
-        get({ apiName: "operatorApi", path: "/tasks" }).response,
-      ]);
+      const response = await fetch(TIMELINE_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phase: filters.phase,
+          showConcluded: true,
+        }),
+      });
 
-      const statusJson = await statusResp.body.json();
-      const tasksJson = await tasksResp.body.json();
+      const data = await response.json();
 
-      const normalizedProjects = parseApiArray(statusJson).map((row) => normalizeProjectStatusDoc(row, filters.phase));
-      const normalizedTasks = parseApiArray(tasksJson)
-        .map((doc) => normalizeTaskDoc(doc))
-        .filter(Boolean) as TaskDoc[];
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.message || `Erro ao carregar timeline (${response.status})`);
+      }
+
+      const apiRows = parseApiArray(data);
+      const normalizedProjects: ProjectStatusRow[] = [];
+      const normalizedTasks: TaskDoc[] = [];
+
+      for (const row of apiRows) {
+        const normalized = normalizeTimelineApiRow(row, filters.phase);
+        normalizedProjects.push(normalized.project);
+        normalizedTasks.push(...normalized.tasks);
+      }
 
       setProjectStatusRows(normalizedProjects);
       setTasks(normalizedTasks);
@@ -596,7 +642,7 @@ export default function ProjectTimelineByPhase() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [filters.phase]);
 
   useEffect(() => {
     setPage(1);
