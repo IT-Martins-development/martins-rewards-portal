@@ -11,12 +11,19 @@ import RewardsReport from "./RewardsReport";
 import RewardsBalancesReport from "./RewardsBalancesReport";
 import RewardsUser from "./RewardsUser";
 import ProjectControl from "./ProjectControl"; 
+import ProjectTimelineByPhase from "./ProjectTimelineByPhase";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
 type Role = "ADMIN" | "INVESTOR" | "NONE";
-type Page = "crud" | "approvals" | "report" | "balances" | "projects";
+type Page =
+  | "crud"
+  | "approvals"
+  | "report"
+  | "balances"
+  | "projects"
+  | "timeline";
 
 // --- ESTILOS ORIGINAIS PRESERVADOS ---
 const shell: React.CSSProperties = { minHeight: "100vh", background: "#111", color: "#fff" };
@@ -130,6 +137,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           <button style={page === "report" ? btnActive : btn} onClick={() => setPage("report")}>Relatório</button>
           <button style={page === "balances" ? btnActive : btn} onClick={() => setPage("balances")}>Saldos</button>
           <button style={page === "projects" ? btnActive : btn} onClick={() => setPage("projects")}>Projetos</button>
+          <button style={page === "timeline" ? btnActive : btn} onClick={() => setPage("timeline")}>Timeline by Phase</button>
         </aside>
 
         <main style={contentWrap}>
@@ -142,6 +150,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {page === "report" && <RewardsReport lang={langLabel} />}
           {page === "balances" && <RewardsBalancesReport lang={langLabel} />}
           {page === "projects" && <ProjectControl />}
+          {page === "timeline" && <ProjectTimelineByPhase />}
         </main>
       </div>
     </div>
