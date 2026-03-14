@@ -32,17 +32,34 @@ type ProjectStatusRow = {
 
 type TaskDoc = {
   _id?: string;
+  taskId?: string;
   projectId: string;
   phase: PhaseKey;
   title: string;
   status: string;
   startDate?: string | null;
   endDate?: string | null;
+  completedDate?: string | null;
   expectedStartDate?: string | null;
   workDays?: number;
   workdays?: number;
   operatorId?: string;
+  managerId?: string;
+  type?: string;
+  subVendorIds?: string[];
   raw: AnyObj;
+};
+
+type SubvendorOption = {
+  id: string;
+  companyName: string;
+};
+
+type TaskModalState = {
+  open: boolean;
+  row: JoinedRow | null;
+  taskName: string;
+  task: TaskDoc | null;
 };
 
 type JoinedRow = ProjectStatusRow & {
@@ -57,6 +74,9 @@ const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
 
 
 const TIMELINE_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/projects-timeline-by-phase";
+const SUBVENDORS_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/subvendors-options";
+const TASKS_UPDATE_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/tasks-update";
+const PROJECT_DETAILS_BASE_URL = "https://martins-development.com/projects";
 
 const TASK_ORDER: Record<PhaseKey, string[]> = {
   "Pre Construction": [
@@ -251,6 +271,33 @@ function formatIsoDate(value?: string | null): string {
   return d.toISOString().slice(0, 10);
 }
 
+function toIsoStartOfDay(value?: string | null): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function todayInputValue(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function resolveCurrentUserId(): string {
+  try {
+    const candidates = [
+      window.localStorage.getItem("userId"),
+      window.localStorage.getItem("currentUserId"),
+      window.localStorage.getItem("operatorId"),
+      window.sessionStorage.getItem("userId"),
+      window.sessionStorage.getItem("currentUserId"),
+    ].filter(Boolean);
+    return toStr(candidates[0] || "");
+  } catch {
+    return "";
+  }
+}
+
 function daysUntil(dateLike?: string | null): number | null {
   if (!dateLike) return null;
   const d = new Date(dateLike);
@@ -371,16 +418,21 @@ function normalizeTaskDoc(doc: AnyObj): TaskDoc | null {
   if (!phase || !title || !projectId) return null;
   return {
     _id: toStr(doc._id),
+    taskId: toStr(doc.taskId || doc._id),
     projectId,
     phase,
     title,
     status: toStr(doc.status || "Todo") || "Todo",
     startDate: toStr(doc.startDate || doc.expectedStartDate || "") || null,
     endDate: toStr(doc.endDate || "") || null,
+    completedDate: toStr(doc.completedDate || doc.endDate || "") || null,
     expectedStartDate: toStr(doc.expectedStartDate || "") || null,
     workDays: normNumber(doc.workDays, 0),
     workdays: normNumber(doc.workdays, 0),
     operatorId: toStr(doc.operatorId || ""),
+    managerId: toStr(doc.managerId || ""),
+    type: toStr(doc.type || ""),
+    subVendorIds: Array.isArray(doc.subVendorIds) ? doc.subVendorIds.map((id: any) => toStr(id)) : [],
     raw: doc,
   };
 }
@@ -424,7 +476,7 @@ function taskVisual(task: TaskDoc | null) {
   const normalized = raw.toLowerCase();
 
   if (normalized === "done") {
-    return { className: "done", date: formatDate(task.endDate), label: "Concluída", csvStatus: "Done" as TaskStatus };
+    return { className: "done", date: formatDate(task.completedDate || task.endDate), label: "Concluída", csvStatus: "Done" as TaskStatus };
   }
 
   if (normalized === "in progress" || normalized === "inprogress") {
@@ -447,7 +499,7 @@ function taskVisual(task: TaskDoc | null) {
   return { className: "todo", date: formatDate(startRef), label: "Não iniciada", csvStatus: "Todo" as TaskStatus };
 }
 
-function StatusIcon({ task }: { task: TaskDoc | null }) {
+function StatusIcon({ task, onClick }: { task: TaskDoc | null; onClick?: () => void }) {
   const visual = taskVisual(task);
   const styleBase: React.CSSProperties = {
     width: 46,
@@ -486,14 +538,19 @@ function StatusIcon({ task }: { task: TaskDoc | null }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 104 }}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 104, background: "transparent", border: "none", padding: 0, cursor: onClick ? "pointer" : "default" }}
+      title={task ? "Editar task" : "Sem task"}
+    >
       <div style={style}>
         {symbol}
         {attention}
       </div>
       <div style={{ fontSize: 11, fontWeight: 800, color: "#111827", whiteSpace: "nowrap" }}>{visual.date}</div>
       <div style={{ fontSize: 10, color: "rgba(17,24,39,0.65)", textAlign: "center", lineHeight: 1.2 }}>{visual.label}</div>
-    </div>
+    </button>
   );
 }
 
@@ -521,6 +578,11 @@ export default function ProjectTimelineByPhase() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
+  const [subvendorOptions, setSubvendorOptions] = useState<SubvendorOption[]>([]);
+  const [taskModal, setTaskModal] = useState<TaskModalState>({ open: false, row: null, taskName: "", task: null });
+  const [taskForm, setTaskForm] = useState({ status: "Todo", startDate: "", completedDate: todayInputValue(), subVendorIds: [] as string[] });
+  const [savingTask, setSavingTask] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState("");
   const [filters, setFilters] = useState<Filters>({
     phase: "Phase 1",
     operator: "",
@@ -597,6 +659,88 @@ export default function ProjectTimelineByPhase() {
 
   const taskColumns = useMemo(() => TASK_ORDER[filters.phase] || [], [filters.phase]);
 
+  useEffect(() => {
+    setCurrentUserId(resolveCurrentUserId());
+  }, []);
+
+  async function fetchSubvendors() {
+    try {
+      const response = await fetch(SUBVENDORS_API_URL);
+      const data = await response.json();
+      if (!response.ok || data?.ok === false) throw new Error(data?.message || "Erro ao carregar subvendors");
+      setSubvendorOptions(Array.isArray(data?.items) ? data.items : []);
+    } catch (e) {
+      console.error("Erro ao carregar subvendors", e);
+    }
+  }
+
+  function openTaskModal(row: JoinedRow, taskName: string, task: TaskDoc | null) {
+    const normalizedStatus = (() => {
+      const raw = toStr(task?.status || "Todo").trim().toLowerCase();
+      if (raw === "done" || raw === "completed") return "Done";
+      if (raw === "in progress" || raw === "inprogress") return "InProgress";
+      return "Todo";
+    })();
+
+    setTaskModal({ open: true, row, taskName, task });
+    setTaskForm({
+      status: normalizedStatus,
+      startDate: formatIsoDate(task?.startDate || task?.expectedStartDate || null),
+      completedDate: formatIsoDate(task?.completedDate || task?.endDate || null) || todayInputValue(),
+      subVendorIds: Array.isArray(task?.subVendorIds) ? task!.subVendorIds! : [],
+    });
+    fetchSubvendors();
+  }
+
+  function closeTaskModal() {
+    if (savingTask) return;
+    setTaskModal({ open: false, row: null, taskName: "", task: null });
+  }
+
+  async function saveTaskUpdate() {
+    if (!taskModal.row || !taskModal.task?.taskId) {
+      setError("Task inválida para edição.");
+      return;
+    }
+
+    if (!taskForm.startDate) {
+      setError("Start Date é obrigatório.");
+      return;
+    }
+
+    if (taskForm.status === "Done" && !taskForm.completedDate) {
+      setError("Completed Date é obrigatório quando a task estiver Done.");
+      return;
+    }
+
+    setSavingTask(true);
+    setError("");
+    try {
+      const response = await fetch(TASKS_UPDATE_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: taskModal.task.taskId,
+          projectId: taskModal.row.projectId,
+          userId: currentUserId || taskModal.task.operatorId || taskModal.row.raw?.operatorId || "unknown-user",
+          status: taskForm.status,
+          startDate: toIsoStartOfDay(taskForm.startDate),
+          completedDate: taskForm.status === "Done" ? toIsoStartOfDay(taskForm.completedDate || todayInputValue()) : null,
+          subVendorIds: taskForm.subVendorIds,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data?.ok === false) throw new Error(data?.message || `Erro ao atualizar task (${response.status})`);
+      closeTaskModal();
+      await fetchData();
+    } catch (e: any) {
+      console.error("Erro ao atualizar task", e);
+      setError(e?.message || "Erro ao atualizar task.");
+    } finally {
+      setSavingTask(false);
+    }
+  }
+
   async function fetchData() {
     setLoading(true);
     setError("");
@@ -608,7 +752,7 @@ export default function ProjectTimelineByPhase() {
         },
         body: JSON.stringify({
           phase: filters.phase,
-          showConcluded: true,
+          showConcluded: filters.showConcluded,
         }),
       });
 
@@ -890,7 +1034,7 @@ export default function ProjectTimelineByPhase() {
             <tbody>
               {pagedRows.map((row) => (
                 <tr key={`${row.projectId}-${filters.phase}`}>
-                  <td style={{ ...S.td, fontWeight: 800 }}>{row.title}</td>
+                  <td style={{ ...S.td, fontWeight: 800 }}><a href={`${PROJECT_DETAILS_BASE_URL}/${row.projectId}`} target="_blank" rel="noreferrer" style={{ color: "#7A5A3A", textDecoration: "none", fontWeight: 800 }}>{row.title}</a></td>
                   <td style={S.td}>{row.operator}</td>
                   <td style={S.td}>{row.county}</td>
                   <td style={S.td}><span style={getProjectColorDot(row.projectColor)} /></td>
@@ -899,7 +1043,7 @@ export default function ProjectTimelineByPhase() {
                   <td style={S.td}>{row.phaseDurationDays}</td>
                   <td style={S.td}><span style={getProjectColorDot(row.phaseColor)} /></td>
                   {taskColumns.map((taskName) => (
-                    <td key={taskName} style={S.td}><StatusIcon task={row.tasks[taskName]} /></td>
+                    <td key={taskName} style={S.td}><StatusIcon task={row.tasks[taskName]} onClick={() => openTaskModal(row, taskName, row.tasks[taskName])} /></td>
                   ))}
                 </tr>
               ))}
@@ -925,6 +1069,100 @@ export default function ProjectTimelineByPhase() {
           <button style={S.btnGhost} disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>Próxima ▶</button>
         </div>
       </div>
+
+      {taskModal.open ? (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.42)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 1000 }}>
+          <div style={{ width: "min(860px, 96vw)", maxHeight: "92vh", overflowY: "auto", background: "#fff", borderRadius: 18, border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 24px 70px rgba(15,23,42,0.22)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
+              <div>
+                <div style={{ fontSize: 24, fontWeight: 900 }}>Edit task</div>
+                <div style={{ marginTop: 6, fontSize: 13, color: "rgba(17,24,39,0.70)" }}>
+                  {taskModal.row?.title} • {taskModal.taskName} • {filters.phase}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button style={S.btnGhost} onClick={closeTaskModal} disabled={savingTask}>Cancelar</button>
+                <button style={S.btnPrimary} onClick={saveTaskUpdate} disabled={savingTask}>{savingTask ? "Salvando..." : "Save"}</button>
+              </div>
+            </div>
+
+            <div style={{ padding: 20, display: "grid", gap: 18 }}>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>About the task</div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <span style={S.label}>Title</span>
+                  <input style={S.input} value={taskModal.taskName} disabled />
+                </div>
+                <div>
+                  <span style={S.label}>Type</span>
+                  <input style={S.input} value={taskModal.task?.type || "Construction"} disabled />
+                </div>
+
+                <div>
+                  <span style={S.label}>Status</span>
+                  <select style={S.input} value={taskForm.status} onChange={(e) => setTaskForm((p) => ({ ...p, status: e.target.value, completedDate: e.target.value === "Done" ? (p.completedDate || todayInputValue()) : p.completedDate }))}>
+                    <option value="Todo">Todo</option>
+                    <option value="InProgress">InProgress</option>
+                    <option value="Done">Done</option>
+                  </select>
+                </div>
+                <div>
+                  <span style={S.label}>Completed Date</span>
+                  <input type="date" style={{ ...S.input, backgroundColor: taskForm.status === "Done" ? "#fff" : "#f3f4f6" }} value={taskForm.status === "Done" ? taskForm.completedDate : ""} disabled={taskForm.status !== "Done"} onChange={(e) => setTaskForm((p) => ({ ...p, completedDate: e.target.value }))} />
+                </div>
+
+                <div>
+                  <span style={S.label}>Phase</span>
+                  <input style={S.input} value={filters.phase} disabled />
+                </div>
+                <div>
+                  <span style={S.label}>Start Date</span>
+                  <input type="date" style={S.input} value={taskForm.startDate} onChange={(e) => setTaskForm((p) => ({ ...p, startDate: e.target.value }))} />
+                </div>
+
+                <div>
+                  <span style={S.label}>Work days</span>
+                  <input style={S.input} value={toStr(taskModal.task?.workDays || taskModal.task?.workdays || "")} disabled />
+                </div>
+              </div>
+
+              <div style={{ fontWeight: 900, fontSize: 18, marginTop: 6 }}>Group team</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <span style={S.label}>Operator</span>
+                  <input style={S.input} value={taskModal.row?.operator || ""} disabled />
+                </div>
+                <div>
+                  <span style={S.label}>Manager</span>
+                  <input style={S.input} value={toStr(taskModal.task?.managerId || taskModal.task?.raw?.managerId || "")} disabled />
+                </div>
+              </div>
+
+              <div>
+                <span style={S.label}>Subvendors</span>
+                <select
+                  multiple
+                  value={taskForm.subVendorIds}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                    setTaskForm((p) => ({ ...p, subVendorIds: selected }));
+                  }}
+                  style={{ width: "100%", minHeight: 160, padding: 12, borderRadius: 12, border: "1px solid rgba(0,0,0,0.14)", background: "#fff", fontSize: 13, color: "#111827" }}
+                >
+                  {subvendorOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.companyName}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(17,24,39,0.65)" }}>Seleção por company name, salvando somente IDs em <strong>subVendorIds</strong>.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </div>
   );
 }
