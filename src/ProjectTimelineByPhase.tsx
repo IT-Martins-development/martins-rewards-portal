@@ -288,7 +288,7 @@ function daysUntil(dateLike?: string | null): number | null {
 }
 function taskVisual(task: TaskDoc | null) {
   if (!task) {
-    return { className: "null", date: "-", label: "Nulo", severity: "none" };
+    return { className: "null", date: "-", label: "Nulo", severity: "none" as const };
   }
 
   const normalized = toStr(task.status || "Todo").trim().toLowerCase();
@@ -301,7 +301,7 @@ function taskVisual(task: TaskDoc | null) {
       className: "done",
       date: formatDate(when),
       label: "Concluída",
-      severity: "done",
+      severity: "done" as const,
     };
   }
 
@@ -314,7 +314,7 @@ function taskVisual(task: TaskDoc | null) {
         className: "progress danger",
         date: formatDate(refDate),
         label: "Em andamento crítica",
-        severity: "danger",
+        severity: "danger" as const,
       };
     }
 
@@ -323,7 +323,7 @@ function taskVisual(task: TaskDoc | null) {
         className: "progress warning",
         date: formatDate(refDate),
         label: "Em andamento vencida",
-        severity: "warning",
+        severity: "warning" as const,
       };
     }
 
@@ -331,7 +331,7 @@ function taskVisual(task: TaskDoc | null) {
       className: "progress",
       date: formatDate(refDate),
       label: "Em andamento",
-      severity: "progress",
+      severity: "progress" as const,
     };
   }
 
@@ -346,7 +346,7 @@ function taskVisual(task: TaskDoc | null) {
         className: "todo danger",
         date: formatDate(refDate),
         label: "Não iniciada crítica",
-        severity: "danger",
+        severity: "danger" as const,
       };
     }
 
@@ -355,7 +355,7 @@ function taskVisual(task: TaskDoc | null) {
         className: "todo warning",
         date: formatDate(refDate),
         label: "Não iniciada vencida",
-        severity: "warning",
+        severity: "warning" as const,
       };
     }
 
@@ -363,7 +363,7 @@ function taskVisual(task: TaskDoc | null) {
       className: "todo",
       date: formatDate(refDate),
       label: "Não iniciada",
-      severity: "todo",
+      severity: "todo" as const,
     };
   }
 
@@ -372,7 +372,7 @@ function taskVisual(task: TaskDoc | null) {
       className: "todo danger",
       date: formatDate(refDate),
       label: "Crítica",
-      severity: "danger",
+      severity: "danger" as const,
     };
   }
 
@@ -381,7 +381,7 @@ function taskVisual(task: TaskDoc | null) {
       className: "todo warning",
       date: formatDate(refDate),
       label: "Vencida",
-      severity: "warning",
+      severity: "warning" as const,
     };
   }
 
@@ -389,7 +389,7 @@ function taskVisual(task: TaskDoc | null) {
     className: "todo",
     date: formatDate(refDate),
     label: "Não iniciada",
-    severity: "todo",
+    severity: "todo" as const,
   };
 }
 
@@ -455,7 +455,34 @@ function StatusIcon({ task }: { task: TaskDoc | null }) {
     symbol = "•";
   }
 
-  return <div style={style}>{symbol}</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 110 }}>
+      <div style={style}>{symbol}</div>
+
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          color: "#111827",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {visual.date}
+      </div>
+
+      <div
+        style={{
+          fontSize: 10,
+          color: "rgba(17,24,39,0.65)",
+          textAlign: "center",
+          lineHeight: 1.2,
+          maxWidth: 100,
+        }}
+      >
+        {visual.label}
+      </div>
+    </div>
+  );
 }
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string | number; subtitle: string }) {
