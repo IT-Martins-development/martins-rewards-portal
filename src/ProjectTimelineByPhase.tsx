@@ -306,17 +306,58 @@ function taskVisual(task: TaskDoc | null) {
   const startRef = task.startDate || task.expectedStartDate || null;
   const delta = daysUntil(startRef);
 
-  if (normalized === "pending") {
-    if (delta !== null && delta < 0) return { className: "pending danger", date: formatDate(startRef), label: "Pendente atrasada" };
-    if (delta !== null && delta <= 3) return { className: "pending warning", date: formatDate(startRef), label: "Pendente até 3 dias" };
-    return { className: "pending", date: formatDate(startRef), label: "Pendente" };
+  // Tudo que ainda não foi concluído nem iniciado entra aqui como "não iniciada"
+  // Regras:
+  // data vencida -> amarelo
+  // muito vencida (7+ dias) -> vermelho
+  // data futura -> cinza
+  if (
+    normalized === "pending" ||
+    normalized === "todo" ||
+    normalized === "" ||
+    normalized === "not started"
+  ) {
+    if (delta !== null && delta < -7) {
+      return {
+        className: "todo danger",
+        date: formatDate(startRef),
+        label: "Não iniciada atrasada",
+      };
+    }
+
+    if (delta !== null && delta < 0) {
+      return {
+        className: "todo warning",
+        date: formatDate(startRef),
+        label: "Não iniciada vencida",
+      };
+    }
+
+    if (delta !== null && delta <= 3) {
+      return {
+        className: "todo warning",
+        date: formatDate(startRef),
+        label: "Não iniciada próxima",
+      };
+    }
+
+    return {
+      className: "todo",
+      date: formatDate(startRef),
+      label: "Não iniciada",
+    };
   }
 
-  return { className: "todo", date: formatDate(startRef), label: "Não iniciada" };
+  return {
+    className: "todo",
+    date: formatDate(startRef),
+    label: "Não iniciada",
+  };
 }
 
 function StatusIcon({ task }: { task: TaskDoc | null }) {
   const visual = taskVisual(task);
+
   const base: React.CSSProperties = {
     width: 42,
     height: 42,
@@ -330,7 +371,13 @@ function StatusIcon({ task }: { task: TaskDoc | null }) {
     cursor: task?.taskId ? "pointer" : "not-allowed",
   };
 
-  let style: React.CSSProperties = { ...base, border: "4px solid #cbd5e1", color: "#9aa3af", fontSize: 24 };
+  let style: React.CSSProperties = {
+    ...base,
+    border: "4px solid #cbd5e1",
+    color: "#9aa3af",
+    fontSize: 24,
+  };
+
   let symbol = "•";
   let attention: React.ReactNode = null;
 
@@ -348,29 +395,21 @@ function StatusIcon({ task }: { task: TaskDoc | null }) {
   } else if (visual.className.includes("danger")) {
     style = {
       ...base,
-      border: "4px solid #9ca3af",
-      color: "#9ca3af",
-      fontSize: 26,
+      border: "4px solid #dc2626",
+      color: "#dc2626",
+      fontSize: 22,
       boxShadow: "0 0 0 3px rgba(239,68,68,0.15)",
     };
-    attention = (
-      <span style={{ position: "absolute", top: -8, right: -2, fontSize: 16, color: "#dc2626" }}>
-        ⚠
-      </span>
-    );
+    symbol = "!";
   } else if (visual.className.includes("warning")) {
     style = {
       ...base,
-      border: "4px solid #9ca3af",
-      color: "#9ca3af",
-      fontSize: 26,
+      border: "4px solid #ca8a04",
+      color: "#ca8a04",
+      fontSize: 22,
       boxShadow: "0 0 0 3px rgba(234,179,8,0.15)",
     };
-    attention = (
-      <span style={{ position: "absolute", top: -8, right: -2, fontSize: 16, color: "#ca8a04" }}>
-        ⚠
-      </span>
-    );
+    symbol = "!";
   }
 
   return (
@@ -379,7 +418,9 @@ function StatusIcon({ task }: { task: TaskDoc | null }) {
         {symbol}
         {attention}
       </div>
-      <div style={{ fontSize: 11, fontWeight: 800, color: "#111827", whiteSpace: "nowrap" }}>{visual.date}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#111827", whiteSpace: "nowrap" }}>
+        {visual.date}
+      </div>
       <div style={{ fontSize: 10, color: "rgba(17,24,39,0.65)", textAlign: "center", lineHeight: 1.2 }}>
         {visual.label}
       </div>
@@ -948,7 +989,7 @@ const scrollCols = [
           <div>
             <div style={{ fontSize: 28, fontWeight: 900 }}>Timeline por Phase dos Projetos</div>
             <div style={{ marginTop: 6, color: "rgba(17,24,39,0.60)", fontSize: 13 }}>
-              Dados cruzados entre tasks e view_project_status, com ordenação fixa das tasks por phase.
+              
             </div>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
