@@ -286,72 +286,110 @@ function daysUntil(dateLike?: string | null): number | null {
   const b = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return Math.ceil((a - b) / 86400000);
 }
-
 function taskVisual(task: TaskDoc | null) {
   if (!task) {
-    return { className: "null", date: "-", label: "Nulo" };
+    return { className: "null", date: "-", label: "Nulo", severity: "none" };
   }
 
   const normalized = toStr(task.status || "Todo").trim().toLowerCase();
+  const refDate = task.startDate || task.expectedStartDate || task.endDate || null;
+  const delta = daysUntil(refDate);
 
   if (normalized === "done" || normalized === "completed") {
     const when = task.completedDate || task.endDate || task.startDate;
-    return { className: "done", date: formatDate(when), label: "Concluída" };
+    return {
+      className: "done",
+      date: formatDate(when),
+      label: "Concluída",
+      severity: "done",
+    };
   }
+
+  const isLateWarning = delta !== null && delta < 0 && delta >= -7;
+  const isLateDanger = delta !== null && delta < -7;
 
   if (normalized === "in progress" || normalized === "inprogress") {
-    return { className: "progress", date: formatDate(task.startDate), label: "Em andamento" };
+    if (isLateDanger) {
+      return {
+        className: "progress danger",
+        date: formatDate(refDate),
+        label: "Em andamento crítica",
+        severity: "danger",
+      };
+    }
+
+    if (isLateWarning) {
+      return {
+        className: "progress warning",
+        date: formatDate(refDate),
+        label: "Em andamento vencida",
+        severity: "warning",
+      };
+    }
+
+    return {
+      className: "progress",
+      date: formatDate(refDate),
+      label: "Em andamento",
+      severity: "progress",
+    };
   }
 
-  const startRef = task.startDate || task.expectedStartDate || null;
-  const delta = daysUntil(startRef);
-
-  // Tudo que ainda não foi concluído nem iniciado entra aqui como "não iniciada"
-  // Regras:
-  // data vencida -> amarelo
-  // muito vencida (7+ dias) -> vermelho
-  // data futura -> cinza
   if (
     normalized === "pending" ||
     normalized === "todo" ||
     normalized === "" ||
     normalized === "not started"
   ) {
-    if (delta !== null && delta < -7) {
+    if (isLateDanger) {
       return {
         className: "todo danger",
-        date: formatDate(startRef),
-        label: "Não iniciada atrasada",
+        date: formatDate(refDate),
+        label: "Não iniciada crítica",
+        severity: "danger",
       };
     }
 
-    if (delta !== null && delta < 0) {
+    if (isLateWarning) {
       return {
         className: "todo warning",
-        date: formatDate(startRef),
+        date: formatDate(refDate),
         label: "Não iniciada vencida",
-      };
-    }
-
-    if (delta !== null && delta <= 3) {
-      return {
-        className: "todo warning",
-        date: formatDate(startRef),
-        label: "Não iniciada próxima",
+        severity: "warning",
       };
     }
 
     return {
       className: "todo",
-      date: formatDate(startRef),
+      date: formatDate(refDate),
       label: "Não iniciada",
+      severity: "todo",
+    };
+  }
+
+  if (isLateDanger) {
+    return {
+      className: "todo danger",
+      date: formatDate(refDate),
+      label: "Crítica",
+      severity: "danger",
+    };
+  }
+
+  if (isLateWarning) {
+    return {
+      className: "todo warning",
+      date: formatDate(refDate),
+      label: "Vencida",
+      severity: "warning",
     };
   }
 
   return {
     className: "todo",
-    date: formatDate(startRef),
+    date: formatDate(refDate),
     label: "Não iniciada",
+    severity: "todo",
   };
 }
 
@@ -375,57 +413,49 @@ function StatusIcon({ task }: { task: TaskDoc | null }) {
     ...base,
     border: "4px solid #cbd5e1",
     color: "#9aa3af",
-    fontSize: 24,
+    fontSize: 18,
   };
 
   let symbol = "•";
-  let attention: React.ReactNode = null;
 
-  if (visual.className === "done") {
-    style = { ...base, border: "5px solid #2f855a", color: "#2f855a", fontSize: 22 };
-    symbol = "✓";
-  } else if (visual.className === "progress") {
-    style = { ...base, border: "4px solid #1d4ed8", color: "#1d4ed8", fontSize: 18 };
-    symbol = "◔";
-    attention = (
-      <span style={{ position: "absolute", top: -6, right: -3, fontSize: 16, color: "#1d4ed8" }}>
-        ↻
-      </span>
-    );
-  } else if (visual.className.includes("danger")) {
+  if (visual.severity === "done") {
     style = {
-      ...base,
+      ...style,
+      border: "4px solid #16a34a",
+      color: "#16a34a",
+    };
+    symbol = "✓";
+  } else if (visual.className.includes("progress") && visual.severity === "progress") {
+    style = {
+      ...style,
+      border: "4px solid #2563eb",
+      color: "#2563eb",
+    };
+    symbol = "◔";
+  } else if (visual.severity === "warning") {
+    style = {
+      ...style,
+      border: "4px solid #d97706",
+      color: "#d97706",
+    };
+    symbol = "!";
+  } else if (visual.severity === "danger") {
+    style = {
+      ...style,
       border: "4px solid #dc2626",
       color: "#dc2626",
-      fontSize: 22,
-      boxShadow: "0 0 0 3px rgba(239,68,68,0.15)",
     };
     symbol = "!";
-  } else if (visual.className.includes("warning")) {
+  } else if (visual.severity === "todo") {
     style = {
-      ...base,
-      border: "4px solid #ca8a04",
-      color: "#ca8a04",
-      fontSize: 22,
-      boxShadow: "0 0 0 3px rgba(234,179,8,0.15)",
+      ...style,
+      border: "4px solid #94a3b8",
+      color: "#94a3b8",
     };
-    symbol = "!";
+    symbol = "•";
   }
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 110 }}>
-      <div style={style}>
-        {symbol}
-        {attention}
-      </div>
-      <div style={{ fontSize: 11, fontWeight: 800, color: "#111827", whiteSpace: "nowrap" }}>
-        {visual.date}
-      </div>
-      <div style={{ fontSize: 10, color: "rgba(17,24,39,0.65)", textAlign: "center", lineHeight: 1.2 }}>
-        {visual.label}
-      </div>
-    </div>
-  );
+  return <div style={style}>{symbol}</div>;
 }
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string | number; subtitle: string }) {
