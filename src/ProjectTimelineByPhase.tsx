@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { fetchAuthSession } from "aws-amplify/auth";
 
 type AnyObj = Record<string, any>;
 type PhaseKey = "Pre Construction" | "Phase 1" | "Phase 2" | "Phase 3" | "Utilities" | "Supplies";
-type TaskStatus = "Todo" | "Pending" | "In Progress" | "Done" | "Null";
 type PageSize = 10 | 25 | 50 | 100;
 
 type Filters = {
@@ -31,8 +31,7 @@ type ProjectStatusRow = {
 };
 
 type TaskDoc = {
-  _id?: string;
-  taskId?: string;
+  taskId: string;
   projectId: string;
   phase: PhaseKey;
   title: string;
@@ -43,9 +42,9 @@ type TaskDoc = {
   expectedStartDate?: string | null;
   workDays?: number;
   workdays?: number;
-  operatorId?: string;
-  managerId?: string;
-  type?: string;
+  operatorId?: string | null;
+  managerId?: string | null;
+  type?: string | null;
   subVendorIds?: string[];
   raw: AnyObj;
 };
@@ -55,6 +54,28 @@ type SubvendorOption = {
   companyName: string;
 };
 
+type JoinedRow = ProjectStatusRow & {
+  tasks: Record<string, TaskDoc | null>;
+};
+
+type TimelineApiResponse = {
+  ok: boolean;
+  phase: PhaseKey;
+  taskOrder: string[];
+  rows: Array<{
+    projectId: string;
+    project: string;
+    operator: string;
+    county: string;
+    projectColor: string;
+    currentPhase: string;
+    phaseStatus: string | null;
+    phaseDays: number;
+    phaseColor: string | null;
+    tasks: Record<string, any>;
+  }>;
+};
+
 type TaskModalState = {
   open: boolean;
   row: JoinedRow | null;
@@ -62,39 +83,25 @@ type TaskModalState = {
   task: TaskDoc | null;
 };
 
-type JoinedRow = ProjectStatusRow & {
-  tasks: Record<string, TaskDoc | null>;
+type TaskFormState = {
+  status: "Todo" | "InProgress" | "Done";
+  startDate: string;
+  completedDate: string;
+  subVendorIds: string[];
 };
 
+const TIMELINE_API_URL =
+  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/projects-timeline-by-phase";
+const SUBVENDORS_API_URL =
+  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/subvendors-options";
+const TASKS_UPDATE_API_URL =
+  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/tasks-update";
+
 const PHASES: PhaseKey[] = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Utilities", "Supplies"];
-const COLOR_OPTIONS = ["Verde", "Amarelo", "Laranja", "Vermelho"];
-const CURRENT_PHASE_OPTIONS = ["Phase 1", "Phase 2", "Phase 3", "Concluded"];
-const PHASE_STATUS_OPTIONS = ["Todo", "Pending", "In Progress", "Done", "Concluded", "Delayed", "On Hold"];
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
-
-const FIXED_COLUMN_WIDTHS = [220, 140, 120, 110, 120, 140, 170, 130] as const;
-const FIXED_COLUMN_LEFTS = FIXED_COLUMN_WIDTHS.map((_, index) =>
-  FIXED_COLUMN_WIDTHS.slice(0, index).reduce((sum, width) => sum + width, 0)
-);
-
-function getStickyCellStyle(index: number, isHeader = false): React.CSSProperties {
-  return {
-    position: "sticky",
-    left: FIXED_COLUMN_LEFTS[index],
-    zIndex: isHeader ? 5 : 3,
-    background: "#fff",
-    minWidth: FIXED_COLUMN_WIDTHS[index],
-    width: FIXED_COLUMN_WIDTHS[index],
-    maxWidth: FIXED_COLUMN_WIDTHS[index],
-    boxShadow: index === FIXED_COLUMN_WIDTHS.length - 1 ? "2px 0 0 rgba(0,0,0,0.06)" : undefined,
-  };
-}
-
-
-const TIMELINE_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/projects-timeline-by-phase";
-const SUBVENDORS_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/subvendors-options";
-const TASKS_UPDATE_API_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/tasks-update";
-const PROJECT_DETAILS_BASE_URL = "https://martins-development.com/projects";
+const COLOR_OPTIONS = ["Verde", "Amarelo", "Laranja", "Vermelho"];
+const CURRENT_PHASE_OPTIONS = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Utilities", "Supplies", "Concluded"];
+const PHASE_STATUS_OPTIONS = ["Todo", "Pending", "In Progress", "Done", "Delayed", "On Hold", "Concluded"];
 
 const TASK_ORDER: Record<PhaseKey, string[]> = {
   "Pre Construction": [
@@ -235,85 +242,39 @@ const TASK_ORDER: Record<PhaseKey, string[]> = {
   ],
 };
 
-const COLOR_MAP: Record<string, string> = {
-  Verde: "#22c55e",
-  Amarelo: "#eab308",
-  Laranja: "#f97316",
-  Vermelho: "#ef4444",
-  Cinza: "#9ca3af",
-};
-
-function toStr(v: any): string {
-  return (v ?? "").toString();
+function toStr(v: any) {
+  if (v === null || v === undefined) return "";
+  return String(v);
 }
 
-function normNumber(v: any, fallback = 0): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (v?.$numberLong) return parseInt(v.$numberLong, 10) || fallback;
-  if (v?.$numberInt) return parseInt(v.$numberInt, 10) || fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function parseApiArray(payload: any): AnyObj[] {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.rows)) return payload.rows;
+function parseApiArray(data: TimelineApiResponse | AnyObj): any[] {
+  if (Array.isArray((data as any)?.rows)) return (data as any).rows;
+  if (Array.isArray(data)) return data as any[];
   return [];
-}
-
-function normalizePhase(input: any): PhaseKey | "" {
-  const raw = toStr(input).trim().toLowerCase();
-  if (!raw) return "";
-  if (["pre construction", "pre-construction", "preconstruction", "construction permit"].includes(raw)) return "Pre Construction";
-  if (raw === "phase 1" || raw === "phase1") return "Phase 1";
-  if (raw === "phase 2" || raw === "phase2") return "Phase 2";
-  if (raw === "phase 3" || raw === "phase3") return "Phase 3";
-  if (raw === "utilities" || raw === "utilities manager") return "Utilities";
-  if (raw === "supplies" || raw === "supplies manager") return "Supplies";
-  return "";
 }
 
 function formatDate(value?: string | null): string {
   if (!value) return "-";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return toStr(value);
-  return d.toLocaleDateString("en-US");
+  if (Number.isNaN(d.getTime())) return "-";
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${mm}/${dd}/${yyyy}`;
 }
 
 function formatIsoDate(value?: string | null): string {
   if (!value) return "";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return toStr(value);
-  return d.toISOString().slice(0, 10);
-}
-
-function toIsoStartOfDay(value?: string | null): string | null {
-  if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  if (Number.isNaN(d.getTime())) return "";
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function todayInputValue(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function resolveCurrentUserId(): string {
-  try {
-    const candidates = [
-      window.localStorage.getItem("userId"),
-      window.localStorage.getItem("currentUserId"),
-      window.localStorage.getItem("operatorId"),
-      window.sessionStorage.getItem("userId"),
-      window.sessionStorage.getItem("currentUserId"),
-    ].filter(Boolean);
-    return toStr(candidates[0] || "");
-  } catch {
-    return "";
-  }
+  return formatIsoDate(new Date().toISOString());
 }
 
 function daysUntil(dateLike?: string | null): number | null {
@@ -321,207 +282,44 @@ function daysUntil(dateLike?: string | null): number | null {
   const d = new Date(dateLike);
   if (Number.isNaN(d.getTime())) return null;
   const now = new Date();
-  const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const a = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const b = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return Math.ceil((a - b) / 86400000);
-}
-
-function getProjectColorDot(color: string): React.CSSProperties {
-  const c = COLOR_MAP[color] || "#cbd5e1";
-  return {
-    width: 12,
-    height: 12,
-    borderRadius: "50%",
-    display: "inline-block",
-    background: c,
-    boxShadow: `0 0 0 3px ${c}22`,
-  };
-}
-
-function csvEscape(value: any) {
-  return `"${toStr(value).replace(/"/g, '""')}"`;
-}
-
-function resolvePhaseStatus(view: AnyObj, phase: PhaseKey): string {
-  const map: Record<PhaseKey, string[]> = {
-    "Pre Construction": ["StatusPreConstruction", "statusPreConstruction", "StatusConstruction", "statusConstruction"],
-    "Phase 1": ["StatusPhase1", "statusPhase1"],
-    "Phase 2": ["StatusPhase2", "statusPhase2"],
-    "Phase 3": ["StatusPhase3", "statusPhase3"],
-    Utilities: ["StatusUtilities", "statusUtilities"],
-    Supplies: ["StatusSupplies", "statusSupplies"],
-  };
-  for (const key of map[phase]) {
-    const value = toStr(view[key]).trim();
-    if (value) return value;
-  }
-  return phase === view.currentPhase ? toStr(view.phaseStatus || view.pStatus || "") : "";
-}
-
-function resolvePhaseStart(view: AnyObj, phase: PhaseKey): string {
-  const map: Record<PhaseKey, string[]> = {
-    "Pre Construction": ["StartDatePreConstruction", "startDatePreConstruction", "permitIssuedDate", "phaseStartDate"],
-    "Phase 1": ["StartDatePhase1", "startDatePhase1"],
-    "Phase 2": ["StartDatePhase2", "startDatePhase2"],
-    "Phase 3": ["StartDatePhase3", "startDatePhase3"],
-    Utilities: ["StartDateUtilities", "startDateUtilities"],
-    Supplies: ["StartDateSupplies", "startDateSupplies"],
-  };
-  for (const key of map[phase]) {
-    const value = toStr(view[key]).trim();
-    if (value) return value;
-  }
-  return "";
-}
-
-function resolvePhaseEnd(view: AnyObj, phase: PhaseKey): string {
-  const map: Record<PhaseKey, string[]> = {
-    "Pre Construction": ["EndDatePreConstruction", "endDatePreConstruction"],
-    "Phase 1": ["EndDatePhase1", "endDatePhase1"],
-    "Phase 2": ["EndDatePhase2", "endDatePhase2"],
-    "Phase 3": ["EndDatePhase3", "endDatePhase3"],
-    Utilities: ["EndDateUtilities", "endDateUtilities"],
-    Supplies: ["EndDateSupplies", "endDateSupplies"],
-  };
-  for (const key of map[phase]) {
-    const value = toStr(view[key]).trim();
-    if (value) return value;
-  }
-  return "";
-}
-
-function inferPhaseDurationDays(view: AnyObj, phase: PhaseKey): number {
-  const currentPhase = toStr(view.currentPhase);
-  if (currentPhase === phase) {
-    return normNumber(view.daysInPhase, 0);
-  }
-  const start = resolvePhaseStart(view, phase);
-  const end = resolvePhaseEnd(view, phase);
-  if (!start || !end) return 0;
-  const a = new Date(start);
-  const b = new Date(end);
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
-  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
-}
-
-function normalizeProjectStatusDoc(view: AnyObj, phase: PhaseKey): ProjectStatusRow {
-  return {
-    projectId: toStr(view.projectId || view.project?._id || view.project?.id || view._id),
-    title: toStr(view.project?.title || view.title || view.projectTitle || "Sem projeto"),
-    operator: toStr(view.majorityOperatorName || view.operatorName || view.operator || "-"),
-    county: toStr(view.county || view.project?.county || "-"),
-    projectColor: toStr(view.projectColor || view.color || "Sem cor"),
-    currentPhase: toStr(view.currentPhase || "-"),
-    phaseColor: toStr(
-      phase === toStr(view.currentPhase)
-        ? view.phaseColor
-        : phase === "Phase 1"
-          ? view.phaseColorPhase1 || view.phaseColor1 || view.phaseColor
-          : phase === "Phase 2"
-            ? view.phaseColorPhase2 || view.phaseColor2 || view.phaseColor
-            : phase === "Phase 3"
-              ? view.phaseColorPhase3 || view.phaseColor3 || view.phaseColor
-              : view.phaseColor || "Cinza"
-    ) || "Cinza",
-    phaseStatus: resolvePhaseStatus(view, phase) || "Null",
-    phaseDurationDays: inferPhaseDurationDays(view, phase),
-    raw: view,
-  };
-}
-
-function normalizeTaskDoc(doc: AnyObj): TaskDoc | null {
-  const phase = normalizePhase(doc.phase || doc.type || doc.phaseLabel || doc.groupName);
-  const title = toStr(doc.title || doc.name).trim();
-  const projectId = toStr(doc.projectId || doc.project?._id || doc.project?.id).trim();
-  if (!phase || !title || !projectId) return null;
-  return {
-    _id: toStr(doc._id),
-    taskId: toStr(doc.taskId || doc._id),
-    projectId,
-    phase,
-    title,
-    status: toStr(doc.status || "Todo") || "Todo",
-    startDate: toStr(doc.startDate || doc.expectedStartDate || "") || null,
-    endDate: toStr(doc.endDate || "") || null,
-    completedDate: toStr(doc.completedDate || doc.endDate || "") || null,
-    expectedStartDate: toStr(doc.expectedStartDate || "") || null,
-    workDays: normNumber(doc.workDays, 0),
-    workdays: normNumber(doc.workdays, 0),
-    operatorId: toStr(doc.operatorId || ""),
-    managerId: toStr(doc.managerId || ""),
-    type: toStr(doc.type || ""),
-    subVendorIds: Array.isArray(doc.subVendorIds) ? doc.subVendorIds.map((id: any) => toStr(id)) : [],
-    raw: doc,
-  };
-}
-
-function normalizeTimelineApiRow(row: AnyObj, phase: PhaseKey): { project: ProjectStatusRow; tasks: TaskDoc[] } {
-  const projectId = toStr(row.projectId || row.project?._id || row.project?.id || row._id);
-  const project: ProjectStatusRow = {
-    projectId,
-    title: toStr(row.project || row.title || row.projectTitle || "Sem projeto"),
-    operator: toStr(row.operator || row.majorityOperatorName || "-"),
-    county: toStr(row.county || "-"),
-    projectColor: toStr(row.projectColor || "Sem cor"),
-    currentPhase: toStr(row.currentPhase || "-"),
-    phaseColor: toStr(row.phaseColor || "Cinza") || "Cinza",
-    phaseStatus: toStr(row.phaseStatus || "Null") || "Null",
-    phaseDurationDays: normNumber(row.phaseDays, 0),
-    raw: row,
-  };
-
-  const tasks: TaskDoc[] = Object.entries((row.tasks || {}) as Record<string, AnyObj>)
-    .map(([taskTitle, taskValue]) => {
-      if (!taskValue) return null;
-      return normalizeTaskDoc({
-        ...taskValue,
-        title: taskTitle,
-        projectId,
-        phase,
-      });
-    })
-    .filter(Boolean) as TaskDoc[];
-
-  return { project, tasks };
 }
 
 function taskVisual(task: TaskDoc | null) {
   if (!task) {
-    return { className: "null", date: "-", label: "Nulo", csvStatus: "Null" as TaskStatus };
+    return { className: "null", date: "-", label: "Nulo" };
   }
 
-  const raw = toStr(task.status).trim();
-  const normalized = raw.toLowerCase();
+  const normalized = toStr(task.status || "Todo").trim().toLowerCase();
 
-  if (normalized === "done") {
-    return { className: "done", date: formatDate(task.completedDate || task.endDate), label: "Concluída", csvStatus: "Done" as TaskStatus };
+  if (normalized === "done" || normalized === "completed") {
+    const when = task.completedDate || task.endDate || task.startDate;
+    return { className: "done", date: formatDate(when), label: "Concluída" };
   }
 
   if (normalized === "in progress" || normalized === "inprogress") {
-    return { className: "progress", date: formatDate(task.startDate), label: "Em andamento", csvStatus: "In Progress" as TaskStatus };
+    return { className: "progress", date: formatDate(task.startDate), label: "Em andamento" };
   }
 
   const startRef = task.startDate || task.expectedStartDate || null;
   const delta = daysUntil(startRef);
 
   if (normalized === "pending") {
-    if (delta !== null && delta < 0) {
-      return { className: "pending danger", date: formatDate(startRef), label: "Pendente atrasada", csvStatus: "Pending" as TaskStatus };
-    }
-    if (delta !== null && delta <= 3) {
-      return { className: "pending warning", date: formatDate(startRef), label: "Pendente até 3 dias", csvStatus: "Pending" as TaskStatus };
-    }
-    return { className: "pending", date: formatDate(startRef), label: "Pendente", csvStatus: "Pending" as TaskStatus };
+    if (delta !== null && delta < 0) return { className: "pending danger", date: formatDate(startRef), label: "Pendente atrasada" };
+    if (delta !== null && delta <= 3) return { className: "pending warning", date: formatDate(startRef), label: "Pendente até 3 dias" };
+    return { className: "pending", date: formatDate(startRef), label: "Pendente" };
   }
 
-  return { className: "todo", date: formatDate(startRef), label: "Não iniciada", csvStatus: "Todo" as TaskStatus };
+  return { className: "todo", date: formatDate(startRef), label: "Não iniciada" };
 }
 
-function StatusIcon({ task, onClick }: { task: TaskDoc | null; onClick?: () => void }) {
+function StatusIcon({ task }: { task: TaskDoc | null }) {
   const visual = taskVisual(task);
-  const styleBase: React.CSSProperties = {
-    width: 46,
-    height: 46,
+  const base: React.CSSProperties = {
+    width: 42,
+    height: 42,
     borderRadius: "50%",
     display: "grid",
     placeItems: "center",
@@ -529,46 +327,63 @@ function StatusIcon({ task, onClick }: { task: TaskDoc | null; onClick?: () => v
     background: "#fff",
     fontWeight: 900,
     margin: "0 auto",
+    cursor: task?.taskId ? "pointer" : "not-allowed",
   };
 
-  let style: React.CSSProperties = { ...styleBase, border: "4px solid #cbd5e1", color: "#9aa3af", fontSize: 26 };
+  let style: React.CSSProperties = { ...base, border: "4px solid #cbd5e1", color: "#9aa3af", fontSize: 24 };
   let symbol = "•";
   let attention: React.ReactNode = null;
 
   if (visual.className === "done") {
-    style = { ...styleBase, border: "6px solid #22c55e", color: "#22c55e", fontSize: 24 };
+    style = { ...base, border: "5px solid #2f855a", color: "#2f855a", fontSize: 22 };
     symbol = "✓";
   } else if (visual.className === "progress") {
-    style = { ...styleBase, border: "4px solid #2563eb", color: "#2563eb", fontSize: 22 };
+    style = { ...base, border: "4px solid #1d4ed8", color: "#1d4ed8", fontSize: 18 };
     symbol = "◔";
-    attention = <span style={{ position: "absolute", top: -6, right: -3, fontSize: 18, color: "#2563eb" }}>↻</span>;
+    attention = (
+      <span style={{ position: "absolute", top: -6, right: -3, fontSize: 16, color: "#1d4ed8" }}>
+        ↻
+      </span>
+    );
   } else if (visual.className.includes("danger")) {
-    style = { ...styleBase, border: "4px solid #9ca3af", color: "#9ca3af", fontSize: 30, boxShadow: "0 0 0 3px rgba(239,68,68,0.15)" };
-    symbol = "•";
-    attention = <span style={{ position: "absolute", top: -7, right: -4, fontSize: 18, color: "#ef4444" }}>⚠</span>;
+    style = {
+      ...base,
+      border: "4px solid #9ca3af",
+      color: "#9ca3af",
+      fontSize: 26,
+      boxShadow: "0 0 0 3px rgba(239,68,68,0.15)",
+    };
+    attention = (
+      <span style={{ position: "absolute", top: -8, right: -2, fontSize: 16, color: "#dc2626" }}>
+        ⚠
+      </span>
+    );
   } else if (visual.className.includes("warning")) {
-    style = { ...styleBase, border: "4px solid #eab308", color: "#9ca3af", fontSize: 30, boxShadow: "0 0 0 3px rgba(234,179,8,0.15)" };
-    symbol = "•";
-    attention = <span style={{ position: "absolute", top: -7, right: -4, fontSize: 18, color: "#eab308" }}>⚠</span>;
-  } else if (visual.className === "todo") {
-    style = { ...styleBase, border: "4px solid #cbd5e1", color: "#9aa3af", fontSize: 30 };
-    symbol = "•";
+    style = {
+      ...base,
+      border: "4px solid #9ca3af",
+      color: "#9ca3af",
+      fontSize: 26,
+      boxShadow: "0 0 0 3px rgba(234,179,8,0.15)",
+    };
+    attention = (
+      <span style={{ position: "absolute", top: -8, right: -2, fontSize: 16, color: "#ca8a04" }}>
+        ⚠
+      </span>
+    );
   }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 104, background: "transparent", border: "none", padding: 0, cursor: onClick ? "pointer" : "default" }}
-      title={task ? "Editar task" : "Sem task"}
-    >
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 110 }}>
       <div style={style}>
         {symbol}
         {attention}
       </div>
       <div style={{ fontSize: 11, fontWeight: 800, color: "#111827", whiteSpace: "nowrap" }}>{visual.date}</div>
-      <div style={{ fontSize: 10, color: "rgba(17,24,39,0.65)", textAlign: "center", lineHeight: 1.2 }}>{visual.label}</div>
-    </button>
+      <div style={{ fontSize: 10, color: "rgba(17,24,39,0.65)", textAlign: "center", lineHeight: 1.2 }}>
+        {visual.label}
+      </div>
+    </div>
   );
 }
 
@@ -590,17 +405,85 @@ function SummaryCard({ title, value, subtitle }: { title: string; value: string 
   );
 }
 
+function normalizeTimelineApiRow(row: any, phase: PhaseKey): { project: ProjectStatusRow; tasks: TaskDoc[] } {
+  const tasksObj = row?.tasks || {};
+  const taskDocs: TaskDoc[] = Object.keys(tasksObj).map((key) => {
+    const t = tasksObj[key] || {};
+    return {
+      taskId: toStr(t.taskId || ""),
+      projectId: toStr(row.projectId),
+      phase,
+      title: toStr(t.title || key),
+      status: toStr(t.status || "Todo"),
+      startDate: t.startDate || null,
+      endDate: t.endDate || null,
+      completedDate: t.completedDate || null,
+      expectedStartDate: t.expectedStartDate || null,
+      workDays: typeof t.workdays === "number" ? t.workdays : typeof t.workDays === "number" ? t.workDays : undefined,
+      workdays: typeof t.workdays === "number" ? t.workdays : typeof t.workDays === "number" ? t.workDays : undefined,
+      operatorId: t.operatorId || null,
+      managerId: t.managerId || null,
+      type: t.type || "Construction",
+      subVendorIds: Array.isArray(t.subVendorIds) ? t.subVendorIds : [],
+      raw: t,
+    };
+  });
+
+  return {
+    project: {
+      projectId: toStr(row.projectId),
+      title: toStr(row.project),
+      operator: toStr(row.operator),
+      county: toStr(row.county),
+      projectColor: toStr(row.projectColor),
+      currentPhase: toStr(row.currentPhase),
+      phaseColor: toStr(row.phaseColor),
+      phaseStatus: toStr(row.phaseStatus),
+      phaseDurationDays: Number(row.phaseDays || 0),
+      raw: row,
+    },
+    tasks: taskDocs,
+  };
+}
+
+async function getLoggedUserId(): Promise<string> {
+  try {
+    const session = await fetchAuthSession();
+    const idTokenSub = session.tokens?.idToken?.payload?.sub;
+    const accessTokenSub = session.tokens?.accessToken?.payload?.sub;
+    return String(idTokenSub || accessTokenSub || "");
+  } catch (e) {
+    console.warn("Unable to get logged user", e);
+    return "";
+  }
+}
+
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
 export default function ProjectTimelineByPhase() {
   const [projectStatusRows, setProjectStatusRows] = useState<ProjectStatusRow[]>([]);
   const [tasks, setTasks] = useState<TaskDoc[]>([]);
+  const [taskColumns, setTaskColumns] = useState<string[]>(TASK_ORDER["Phase 1"]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [page, setPage] = useState(1);
-  const [subvendorOptions, setSubvendorOptions] = useState<SubvendorOption[]>([]);
-  const [taskModal, setTaskModal] = useState<TaskModalState>({ open: false, row: null, taskName: "", task: null });
-  const [taskForm, setTaskForm] = useState({ status: "Todo", startDate: "", completedDate: todayInputValue(), subVendorIds: [] as string[] });
   const [savingTask, setSavingTask] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState("");
+  const [error, setError] = useState("");
+  const [editError, setEditError] = useState("");
+  const [page, setPage] = useState(1);
+  const [subvendors, setSubvendors] = useState<SubvendorOption[]>([]);
+  const [taskModal, setTaskModal] = useState<TaskModalState>({ open: false, row: null, taskName: "", task: null });
+  const [taskForm, setTaskForm] = useState<TaskFormState>({
+    status: "Todo",
+    startDate: "",
+    completedDate: "",
+    subVendorIds: [],
+  });
+
   const [filters, setFilters] = useState<Filters>({
     phase: "Phase 1",
     operator: "",
@@ -659,145 +542,51 @@ export default function ProjectTimelineByPhase() {
       fontSize: 13,
     },
     label: { fontSize: 11, color: "rgba(17,24,39,0.75)", fontWeight: 800, marginBottom: 4, display: "block" },
-    th: {
-      textAlign: "left",
-      fontSize: 10,
-      color: "rgba(17,24,39,0.7)",
+    td: {
       padding: "10px 10px",
-      background: "#FBFBFC",
-      fontWeight: 900,
       borderBottom: "1px solid rgba(0,0,0,0.06)",
-      whiteSpace: "nowrap",
-      position: "sticky" as const,
-      top: 0,
-      zIndex: 1,
+      fontSize: 12,
+      color: "#111827",
+      verticalAlign: "middle",
     },
-    td: { padding: "10px 10px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: "#111827", verticalAlign: "middle" },
   };
-
-  const taskColumns = useMemo(() => TASK_ORDER[filters.phase] || [], [filters.phase]);
-
-  useEffect(() => {
-    setCurrentUserId(resolveCurrentUserId());
-  }, []);
 
   async function fetchSubvendors() {
     try {
-      const response = await fetch(SUBVENDORS_API_URL);
-      const data = await response.json();
-      if (!response.ok || data?.ok === false) throw new Error(data?.message || "Erro ao carregar subvendors");
-      setSubvendorOptions(Array.isArray(data?.items) ? data.items : []);
+      const res = await fetch(SUBVENDORS_API_URL);
+      const data = await res.json();
+      if (res.ok && data?.ok && Array.isArray(data.items)) {
+        setSubvendors(data.items);
+      }
     } catch (e) {
       console.error("Erro ao carregar subvendors", e);
-    }
-  }
-
-  function openTaskModal(row: JoinedRow, taskName: string, task: TaskDoc | null) {
-    const normalizedStatus = (() => {
-      const raw = toStr(task?.status || "Todo").trim().toLowerCase();
-      if (raw === "done" || raw === "completed") return "Done";
-      if (raw === "in progress" || raw === "inprogress") return "InProgress";
-      return "Todo";
-    })();
-
-    setTaskModal({ open: true, row, taskName, task });
-    setTaskForm({
-      status: normalizedStatus,
-      startDate: formatIsoDate(task?.startDate || task?.expectedStartDate || null),
-      completedDate: formatIsoDate(task?.completedDate || task?.endDate || null) || todayInputValue(),
-      subVendorIds: Array.isArray(task?.subVendorIds) ? task!.subVendorIds! : [],
-    });
-    fetchSubvendors();
-  }
-
-  function closeTaskModal() {
-    if (savingTask) return;
-    setTaskModal({ open: false, row: null, taskName: "", task: null });
-  }
-
-  function handleTaskStatusChange(newStatus: string) {
-    setTaskForm((prev) => {
-      const next = { ...prev, status: newStatus };
-
-      if ((newStatus === "InProgress" || newStatus === "Done") && !next.startDate) {
-        next.startDate = todayInputValue();
-      }
-
-      if (newStatus === "Done") {
-        if (!next.completedDate) {
-          next.completedDate = todayInputValue();
-        }
-      } else {
-        next.completedDate = "";
-      }
-
-      return next;
-    });
-  }
-
-  async function saveTaskUpdate() {
-    if (!taskModal.row || !taskModal.task?.taskId) {
-      setError("Task inválida para edição.");
-      return;
-    }
-
-    if (!taskForm.startDate) {
-      setError("Start Date é obrigatório.");
-      return;
-    }
-
-    if (taskForm.status === "Done" && !taskForm.completedDate) {
-      setError("Completed Date é obrigatório quando a task estiver Done.");
-      return;
-    }
-
-    setSavingTask(true);
-    setError("");
-    try {
-      const response = await fetch(TASKS_UPDATE_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskId: taskModal.task.taskId,
-          projectId: taskModal.row.projectId,
-          userId: currentUserId || taskModal.task.operatorId || taskModal.row.raw?.operatorId || "unknown-user",
-          status: taskForm.status,
-          startDate: toIsoStartOfDay(taskForm.startDate),
-          completedDate: taskForm.status === "Done" ? toIsoStartOfDay(taskForm.completedDate || todayInputValue()) : null,
-          subVendorIds: taskForm.subVendorIds,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok || data?.ok === false) throw new Error(data?.message || `Erro ao atualizar task (${response.status})`);
-      closeTaskModal();
-      await fetchData();
-    } catch (e: any) {
-      console.error("Erro ao atualizar task", e);
-      setError(e?.message || "Erro ao atualizar task.");
-    } finally {
-      setSavingTask(false);
     }
   }
 
   async function fetchData() {
     setLoading(true);
     setError("");
+
     try {
       const response = await fetch(TIMELINE_API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phase: filters.phase,
+          operator: filters.operator || undefined,
+          project: filters.projectTitle || undefined,
+          county: filters.county || undefined,
+          projectColor: filters.projectColor || undefined,
+          currentPhase: filters.currentPhase || undefined,
+          phaseStatus: filters.phaseStatus || undefined,
           showConcluded: filters.showConcluded,
         }),
       });
 
-      const data = await response.json();
+      const data: TimelineApiResponse = await response.json();
 
       if (!response.ok || data?.ok === false) {
-        throw new Error(data?.message || `Erro ao carregar timeline (${response.status})`);
+        throw new Error((data as any)?.message || `Erro ao carregar timeline (${response.status})`);
       }
 
       const apiRows = parseApiArray(data);
@@ -810,6 +599,7 @@ export default function ProjectTimelineByPhase() {
         normalizedTasks.push(...normalized.tasks);
       }
 
+      setTaskColumns(Array.isArray(data?.taskOrder) && data.taskOrder.length ? data.taskOrder : TASK_ORDER[filters.phase]);
       setProjectStatusRows(normalizedProjects);
       setTasks(normalizedTasks);
     } catch (e: any) {
@@ -824,41 +614,46 @@ export default function ProjectTimelineByPhase() {
 
   useEffect(() => {
     fetchData();
-  }, [filters.phase]);
+  }, [
+    filters.phase,
+    filters.operator,
+    filters.projectTitle,
+    filters.county,
+    filters.projectColor,
+    filters.currentPhase,
+    filters.phaseStatus,
+    filters.showConcluded,
+  ]);
+
+  useEffect(() => {
+    fetchSubvendors();
+  }, []);
 
   useEffect(() => {
     setPage(1);
   }, [filters]);
 
-  const operatorOptions = useMemo(
-    () => Array.from(new Set(projectStatusRows.map((r) => r.operator).filter(Boolean))).sort(),
-    [projectStatusRows]
-  );
-
-  const countyOptions = useMemo(
-    () => Array.from(new Set(projectStatusRows.map((r) => r.county).filter(Boolean))).sort(),
-    [projectStatusRows]
-  );
-
-  const taskMapByProjectAndPhase = useMemo(() => {
-    const map = new Map<string, Record<string, TaskDoc>>();
-    for (const task of tasks) {
-      const key = `${task.projectId}__${task.phase}`;
-      const current = map.get(key) || {};
-      current[task.title] = task;
-      map.set(key, current);
-    }
-    return map;
-  }, [tasks]);
-
   const joinedRows = useMemo<JoinedRow[]>(() => {
-    return projectStatusRows.map((row) => {
-      const taskMap = taskMapByProjectAndPhase.get(`${row.projectId}__${filters.phase}`) || {};
-      const orderedTasks: Record<string, TaskDoc | null> = {};
-      for (const taskName of taskColumns) orderedTasks[taskName] = taskMap[taskName] || null;
-      return { ...row, tasks: orderedTasks };
-    });
-  }, [projectStatusRows, taskMapByProjectAndPhase, filters.phase, taskColumns]);
+    const taskMapByProject = new Map<string, Record<string, TaskDoc | null>>();
+
+    for (const row of projectStatusRows) {
+      const bucket: Record<string, TaskDoc | null> = {};
+      for (const taskName of taskColumns) bucket[taskName] = null;
+      taskMapByProject.set(row.projectId, bucket);
+    }
+
+    for (const task of tasks) {
+      if (!taskMapByProject.has(task.projectId)) continue;
+      const bucket = taskMapByProject.get(task.projectId)!;
+      const key = task.title;
+      if (key in bucket) bucket[key] = task;
+    }
+
+    return projectStatusRows.map((row) => ({
+      ...row,
+      tasks: taskMapByProject.get(row.projectId) || {},
+    }));
+  }, [projectStatusRows, tasks, taskColumns]);
 
   const filteredRows = useMemo(() => {
     return joinedRows.filter((row) => {
@@ -873,334 +668,712 @@ export default function ProjectTimelineByPhase() {
     });
   }, [joinedRows, filters]);
 
-  const pagedRows = useMemo(() => {
-    const start = (page - 1) * filters.pageSize;
-    return filteredRows.slice(start, start + filters.pageSize);
-  }, [filteredRows, page, filters.pageSize]);
+  const operatorOptions = useMemo(
+    () => Array.from(new Set(projectStatusRows.map((r) => r.operator).filter(Boolean))).sort(),
+    [projectStatusRows]
+  );
 
-  const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredRows.length / filters.pageSize)), [filteredRows.length, filters.pageSize]);
+  const countyOptions = useMemo(
+    () => Array.from(new Set(projectStatusRows.map((r) => r.county).filter(Boolean))).sort(),
+    [projectStatusRows]
+  );
 
   const metrics = useMemo(() => {
-    const allVisibleTasks = filteredRows.flatMap((row) => Object.values(row.tasks)).filter(Boolean) as TaskDoc[];
-    const done = allVisibleTasks.filter((t) => taskVisual(t).csvStatus === "Done").length;
-    const progress = allVisibleTasks.filter((t) => taskVisual(t).csvStatus === "In Progress").length;
-    const attention = allVisibleTasks.filter((t) => {
-      const cls = taskVisual(t).className;
-      return cls.includes("warning") || cls.includes("danger");
-    }).length;
-    const avgDuration = filteredRows.length
-      ? (filteredRows.reduce((sum, row) => sum + row.phaseDurationDays, 0) / filteredRows.length).toFixed(1)
-      : "0.0";
-    return { done, progress, attention, avgDuration };
-  }, [filteredRows]);
+    let done = 0;
+    let progress = 0;
+    let attention = 0;
+    let totalDuration = 0;
 
-  const exportCsv = () => {
-    const header = [
+    filteredRows.forEach((row) => {
+      totalDuration += Number(row.phaseDurationDays || 0);
+
+      for (const taskName of taskColumns) {
+        const visual = taskVisual(row.tasks[taskName]);
+        if (visual.className === "done") done += 1;
+        else if (visual.className === "progress") progress += 1;
+        else if (visual.className.includes("danger") || visual.className.includes("warning")) attention += 1;
+      }
+    });
+
+    return {
+      done,
+      progress,
+      attention,
+      avgDuration: filteredRows.length ? (totalDuration / filteredRows.length).toFixed(1) : "0.0",
+    };
+  }, [filteredRows, taskColumns]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / filters.pageSize));
+
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * filters.pageSize, page * filters.pageSize),
+    [filteredRows, page, filters.pageSize]
+  );
+
+  function handleTaskStatusChange(newStatus: string) {
+    setTaskForm((prev) => {
+      const next = { ...prev, status: newStatus as TaskFormState["status"] };
+
+      if ((newStatus === "InProgress" || newStatus === "Done") && !next.startDate) {
+        next.startDate = todayInputValue();
+      }
+
+      if (newStatus === "Done") {
+        if (!next.completedDate) next.completedDate = todayInputValue();
+      } else {
+        next.completedDate = "";
+      }
+
+      return next;
+    });
+  }
+
+  function openTaskModal(row: JoinedRow, taskName: string, task: TaskDoc | null) {
+    setEditError("");
+
+    if (!task || !task.taskId) {
+      setEditError("Esta tarefa ainda não possui registro real na collection tasks para edição.");
+      return;
+    }
+
+    const raw = toStr(task.status || "Todo").trim().toLowerCase();
+    const normalizedStatus: TaskFormState["status"] =
+      raw === "done" || raw === "completed"
+        ? "Done"
+        : raw === "in progress" || raw === "inprogress"
+        ? "InProgress"
+        : "Todo";
+
+    const startDateValue =
+      formatIsoDate(task.startDate || task.expectedStartDate || null) ||
+      (normalizedStatus === "InProgress" || normalizedStatus === "Done" ? todayInputValue() : "");
+
+    const completedDateValue =
+      normalizedStatus === "Done"
+        ? formatIsoDate(task.completedDate || task.endDate || null) || todayInputValue()
+        : "";
+
+    setTaskModal({ open: true, row, taskName, task });
+    setTaskForm({
+      status: normalizedStatus,
+      startDate: startDateValue,
+      completedDate: completedDateValue,
+      subVendorIds: Array.isArray(task.subVendorIds) ? task.subVendorIds : [],
+    });
+  }
+
+  function closeTaskModal() {
+    setTaskModal({ open: false, row: null, taskName: "", task: null });
+    setEditError("");
+  }
+
+  async function saveTask() {
+    if (!taskModal.row || !taskModal.task?.taskId) {
+      setEditError("Task inválida para edição.");
+      return;
+    }
+
+    if (taskForm.status === "Done" && !taskForm.completedDate) {
+      setEditError("Completed Date é obrigatório quando o status for Done.");
+      return;
+    }
+
+    try {
+      setSavingTask(true);
+      setEditError("");
+
+      const userId = await getLoggedUserId();
+      if (!userId) {
+        throw new Error("Não foi possível identificar o usuário logado.");
+      }
+
+      const response = await fetch(TASKS_UPDATE_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: taskModal.task.taskId,
+          projectId: taskModal.row.projectId,
+          userId,
+          status: taskForm.status,
+          startDate: taskForm.startDate || "",
+          completedDate: taskForm.completedDate || "",
+          subVendorIds: taskForm.subVendorIds,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.message || `Erro ao salvar task (${response.status})`);
+      }
+
+      closeTaskModal();
+      await fetchData();
+    } catch (e: any) {
+      console.error("Erro ao salvar task", e);
+      setEditError(e?.message || "Erro ao salvar task.");
+    } finally {
+      setSavingTask(false);
+    }
+  }
+
+  function exportCurrentViewCsv() {
+    const headers = [
       "Projeto",
       "Operador",
       "County",
       "Farol Projeto",
       "Fase Atual",
       "Status da Phase",
-      "Duracao de Dias da Phase",
+      "Duração de Dias da Phase",
       "Farol da Phase",
-      ...taskColumns.flatMap((taskName) => [`${taskName} - Status`, `${taskName} - Data`]),
+      ...taskColumns.map((task) => `${task} (${filters.phase})`),
     ];
 
-    const rows = filteredRows.map((row) => [
-      row.title,
-      row.operator,
-      row.county,
-      row.projectColor,
-      row.currentPhase,
-      row.phaseStatus,
-      row.phaseDurationDays,
-      row.phaseColor,
-      ...taskColumns.flatMap((taskName) => {
+    const lines = filteredRows.map((row) => {
+      const base = [
+        row.title,
+        row.operator,
+        row.county,
+        row.projectColor,
+        row.currentPhase,
+        row.phaseStatus,
+        row.phaseDurationDays,
+        row.phaseColor,
+      ];
+
+      const tasksPart = taskColumns.map((taskName) => {
         const task = row.tasks[taskName];
         const visual = taskVisual(task);
-        const date = !task ? "" : visual.csvStatus === "Done" ? formatDate(task.endDate) : formatDate(task.startDate || task.expectedStartDate);
-        return [visual.csvStatus, date];
-      }),
-    ]);
+        return `${visual.label} | ${visual.date}`;
+      });
 
-    const csv = [header, ...rows].map((line) => line.map(csvEscape).join(",")).join("\n");
+      return [...base, ...tasksPart].map(csvEscape).join(",");
+    });
+
+    const csv = [headers.map(csvEscape).join(","), ...lines].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `timeline_${filters.phase.toLowerCase().replace(/\s+/g, "_")}.csv`;
+    a.download = `timeline_${filters.phase.replace(/\s+/g, "_").toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }
+
+  const fixedCols = [
+    {
+      key: "project",
+      label: "Projeto",
+      width: 220,
+      render: (row: JoinedRow) => (
+        <a
+          href={`https://martins-development.com/projects/${row.projectId}`}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: "#7A5A3A", fontWeight: 800, textDecoration: "none" }}
+        >
+          {row.title}
+        </a>
+      ),
+    },
+    { key: "operator", label: "Operador", width: 140, render: (row: JoinedRow) => row.operator || "-" },
+    { key: "county", label: "County", width: 120, render: (row: JoinedRow) => row.county || "-" },
+    {
+      key: "projectColor",
+      label: "Farol Projeto",
+      width: 120,
+      render: (row: JoinedRow) => (
+        <span
+          style={{
+            color:
+              row.projectColor === "Vermelho"
+                ? "#dc2626"
+                : row.projectColor === "Laranja"
+                ? "#ea580c"
+                : row.projectColor === "Amarelo"
+                ? "#ca8a04"
+                : "#16a34a",
+            fontWeight: 800,
+          }}
+        >
+          {row.projectColor || "-"}
+        </span>
+      ),
+    },
+    { key: "currentPhase", label: "Fase Atual", width: 130, render: (row: JoinedRow) => row.currentPhase || "-" },
+    { key: "phaseStatus", label: "Status da Phase", width: 130, render: (row: JoinedRow) => row.phaseStatus || "-" },
+    { key: "phaseDurationDays", label: "Duração de Dias da Phase", width: 150, render: (row: JoinedRow) => row.phaseDurationDays || 0 },
+    {
+      key: "phaseColor",
+      label: "Farol da Phase",
+      width: 120,
+      render: (row: JoinedRow) => (
+        <span
+          style={{
+            color:
+              row.phaseColor === "Vermelho"
+                ? "#dc2626"
+                : row.phaseColor === "Laranja"
+                ? "#ea580c"
+                : row.phaseColor === "Amarelo"
+                ? "#ca8a04"
+                : "#16a34a",
+            fontWeight: 800,
+          }}
+        >
+          {row.phaseColor || "-"}
+        </span>
+      ),
+    },
+  ] as const;
+
+  const fixedLeftOffsets = fixedCols.reduce<number[]>((acc, col, idx) => {
+    if (idx === 0) acc.push(0);
+    else acc.push(acc[idx - 1] + fixedCols[idx - 1].width);
+    return acc;
+  }, []);
 
   return (
-    <div style={S.page}>
-      <div style={S.header}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#111827" }}>Timeline por Phase dos Projetos</h2>
-          <div style={{ marginTop: 6, fontSize: 13, color: "rgba(17,24,39,0.70)" }}>
-            Dados cruzados entre <strong>tasks</strong> e <strong>view_project_status</strong>, com ordenação fixa das tasks por phase.
+    <div style={{ background: "#0b1220", minHeight: "100vh", padding: 16 }}>
+      <div style={S.page}>
+        <div style={S.header}>
+          <div>
+            <div style={{ fontSize: 28, fontWeight: 900 }}>Timeline por Phase dos Projetos</div>
+            <div style={{ marginTop: 6, color: "rgba(17,24,39,0.60)", fontSize: 13 }}>
+              Dados cruzados entre tasks e view_project_status, com ordenação fixa das tasks por phase.
+            </div>
           </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button style={S.btnGhost} onClick={exportCsv}>Exportar Excel</button>
-          <button style={S.btnPrimary} onClick={fetchData}>{loading ? "Carregando..." : "Atualizar"}</button>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(8, minmax(140px, 1fr))",
-          gap: 12,
-          marginBottom: 18,
-          alignItems: "end",
-        }}
-      >
-        <div>
-          <span style={S.label}>Phase</span>
-          <select style={S.input} value={filters.phase} onChange={(e) => setFilters((p) => ({ ...p, phase: e.target.value as PhaseKey }))}>
-            {PHASES.map((phase) => <option key={phase} value={phase}>{phase}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <span style={S.label}>Operador</span>
-          <select style={S.input} value={filters.operator} onChange={(e) => setFilters((p) => ({ ...p, operator: e.target.value }))}>
-            <option value="">Todos</option>
-            {operatorOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <span style={S.label}>Projeto</span>
-          <input style={S.input} value={filters.projectTitle} placeholder="Buscar projeto" onChange={(e) => setFilters((p) => ({ ...p, projectTitle: e.target.value }))} />
-        </div>
-
-        <div>
-          <span style={S.label}>County</span>
-          <select style={S.input} value={filters.county} onChange={(e) => setFilters((p) => ({ ...p, county: e.target.value }))}>
-            <option value="">Todos</option>
-            {countyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <span style={S.label}>Farol Projeto</span>
-          <select style={S.input} value={filters.projectColor} onChange={(e) => setFilters((p) => ({ ...p, projectColor: e.target.value }))}>
-            <option value="">Todos</option>
-            {COLOR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <span style={S.label}>Fase Atual</span>
-          <select style={S.input} value={filters.currentPhase} onChange={(e) => setFilters((p) => ({ ...p, currentPhase: e.target.value }))}>
-            <option value="">Todas</option>
-            {CURRENT_PHASE_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <span style={S.label}>Status da Phase</span>
-          <select style={S.input} value={filters.phaseStatus} onChange={(e) => setFilters((p) => ({ ...p, phaseStatus: e.target.value }))}>
-            <option value="">Todos</option>
-            {PHASE_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-
-        <div style={{ display: "grid", gap: 8 }}>
-          <span style={S.label}>Itens por página</span>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <select style={S.input} value={filters.pageSize} onChange={(e) => setFilters((p) => ({ ...p, pageSize: Number(e.target.value) as PageSize }))}>
-              {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+            <button style={S.btnGhost} onClick={exportCurrentViewCsv}>
+              Exportar CSV
+            </button>
+            <button style={S.btnPrimary} onClick={fetchData}>
+              Atualizar
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr)) 180px", gap: 10, marginBottom: 16 }}>
+          <div>
+            <span style={S.label}>Phase</span>
+            <select style={S.input} value={filters.phase} onChange={(e) => setFilters((p) => ({ ...p, phase: e.target.value as PhaseKey }))}>
+              {PHASES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
             </select>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontSize: 12, fontWeight: 800 }}>
-              <input
-                type="checkbox"
-                checked={filters.showConcluded}
-                onChange={(e) => setFilters((p) => ({ ...p, showConcluded: e.target.checked }))}
-              />
-              Mostrar concluídos?
-            </label>
           </div>
-        </div>
-      </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 12, marginBottom: 18 }}>
-        <SummaryCard title="Projetos filtrados" value={filteredRows.length} subtitle="Base da visão atual" />
-        <SummaryCard title="Tasks concluídas" value={metrics.done} subtitle="Done com endDate" />
-        <SummaryCard title="Tasks em andamento" value={metrics.progress} subtitle="In Progress com startDate" />
-        <SummaryCard title="Tasks com atenção" value={metrics.attention} subtitle="Pending com alerta por data" />
-        <SummaryCard title="Duração média da phase" value={metrics.avgDuration} subtitle="Dias médios por phase selecionada" />
-      </div>
-
-      {error ? <div style={{ marginBottom: 12, color: "#b91c1c", fontWeight: 800 }}>{error}</div> : null}
-
-      <div style={{ background: "white", borderRadius: 12, border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
-        <div style={{ padding: 14, borderBottom: "1px solid rgba(0,0,0,0.06)", background: "#fffdfb" }}>
-          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Linha de acompanhamento por task da phase</div>
-          <div style={{ fontSize: 12, color: "rgba(17,24,39,0.70)" }}>
-            Phase selecionada: <strong>{filters.phase}</strong>. Projetos sem tasks nessa phase exibem células nulas. A ordem das tasks segue exatamente o template informado.
+          <div>
+            <span style={S.label}>Operador</span>
+            <select style={S.input} value={filters.operator} onChange={(e) => setFilters((p) => ({ ...p, operator: e.target.value }))}>
+              <option value="">Todos</option>
+              {operatorOptions.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 2200 }}>
-            <thead>
-              <tr>
-                <th style={{ ...S.th, ...getStickyCellStyle(0, true) }}>Projeto</th>
-                <th style={{ ...S.th, ...getStickyCellStyle(1, true) }}>Operador</th>
-                <th style={{ ...S.th, ...getStickyCellStyle(2, true) }}>County</th>
-                <th style={{ ...S.th, ...getStickyCellStyle(3, true) }}>Farol Projeto</th>
-                <th style={{ ...S.th, ...getStickyCellStyle(4, true) }}>Fase Atual</th>
-                <th style={{ ...S.th, ...getStickyCellStyle(5, true) }}>Status da Phase</th>
-                <th style={{ ...S.th, ...getStickyCellStyle(6, true) }}>Duração de Dias da Phase</th>
-                <th style={{ ...S.th, ...getStickyCellStyle(7, true) }}>Farol da Phase</th>
-                {taskColumns.map((taskName) => (
-                  <th key={taskName} style={S.th}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 130 }}>
-                      <span>{taskName}</span>
-                      <span style={{ fontSize: 10, color: "rgba(17,24,39,0.58)", fontWeight: 700 }}>{filters.phase}</span>
-                    </div>
-                  </th>
+          <div>
+            <span style={S.label}>Projeto</span>
+            <input
+              style={S.input}
+              placeholder="Buscar projeto"
+              value={filters.projectTitle}
+              onChange={(e) => setFilters((p) => ({ ...p, projectTitle: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <span style={S.label}>County</span>
+            <select style={S.input} value={filters.county} onChange={(e) => setFilters((p) => ({ ...p, county: e.target.value }))}>
+              <option value="">Todos</option>
+              {countyOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <span style={S.label}>Farol Projeto</span>
+            <select style={S.input} value={filters.projectColor} onChange={(e) => setFilters((p) => ({ ...p, projectColor: e.target.value }))}>
+              <option value="">Todos</option>
+              {COLOR_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <span style={S.label}>Fase Atual</span>
+            <select style={S.input} value={filters.currentPhase} onChange={(e) => setFilters((p) => ({ ...p, currentPhase: e.target.value }))}>
+              <option value="">Todas</option>
+              {CURRENT_PHASE_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <span style={S.label}>Status da Phase</span>
+            <select style={S.input} value={filters.phaseStatus} onChange={(e) => setFilters((p) => ({ ...p, phaseStatus: e.target.value }))}>
+              <option value="">Todos</option>
+              {PHASE_STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <span style={S.label}>Itens por página</span>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <select
+                style={S.input}
+                value={filters.pageSize}
+                onChange={(e) => setFilters((p) => ({ ...p, pageSize: Number(e.target.value) as PageSize }))}
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pagedRows.map((row) => (
-                <tr key={`${row.projectId}-${filters.phase}`}>
-                  <td style={{ ...S.td, ...getStickyCellStyle(0), fontWeight: 800 }}><a href={`${PROJECT_DETAILS_BASE_URL}/${row.projectId}`} target="_blank" rel="noreferrer" style={{ color: "#7A5A3A", textDecoration: "none", fontWeight: 800 }}>{row.title}</a></td>
-                  <td style={{ ...S.td, ...getStickyCellStyle(1) }}>{row.operator}</td>
-                  <td style={{ ...S.td, ...getStickyCellStyle(2) }}>{row.county}</td>
-                  <td style={{ ...S.td, ...getStickyCellStyle(3) }}><span style={getProjectColorDot(row.projectColor)} /></td>
-                  <td style={{ ...S.td, ...getStickyCellStyle(4) }}>{row.currentPhase || "-"}</td>
-                  <td style={{ ...S.td, ...getStickyCellStyle(5) }}>{row.phaseStatus || "Null"}</td>
-                  <td style={{ ...S.td, ...getStickyCellStyle(6) }}>{row.phaseDurationDays}</td>
-                  <td style={{ ...S.td, ...getStickyCellStyle(7) }}><span style={getProjectColorDot(row.phaseColor)} /></td>
+              </select>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontSize: 12, fontWeight: 800 }}>
+                <input
+                  type="checkbox"
+                  checked={filters.showConcluded}
+                  onChange={(e) => setFilters((p) => ({ ...p, showConcluded: e.target.checked }))}
+                />
+                Mostrar concluídos?
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 12, marginBottom: 18 }}>
+          <SummaryCard title="Projetos filtrados" value={filteredRows.length} subtitle="Base da visão atual" />
+          <SummaryCard title="Tasks concluídas" value={metrics.done} subtitle="Done com completedDate" />
+          <SummaryCard title="Tasks em andamento" value={metrics.progress} subtitle="In Progress com startDate" />
+          <SummaryCard title="Tasks com atenção" value={metrics.attention} subtitle="Pending com alerta por data" />
+          <SummaryCard title="Duração média da phase" value={metrics.avgDuration} subtitle="Dias médios por phase selecionada" />
+        </div>
+
+        {error ? <div style={{ marginBottom: 12, color: "#b91c1c", fontWeight: 800 }}>{error}</div> : null}
+        {editError && !taskModal.open ? <div style={{ marginBottom: 12, color: "#b91c1c", fontWeight: 800 }}>{editError}</div> : null}
+
+        <div style={{ background: "white", borderRadius: 12, border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
+          <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "72vh", position: "relative" }}>
+            <table
+              style={{
+                borderCollapse: "separate",
+                borderSpacing: 0,
+                minWidth: fixedCols.reduce((sum, c) => sum + c.width, 0) + taskColumns.length * 120,
+              }}
+            >
+              <thead>
+                <tr>
+                  {fixedCols.map((col, idx) => (
+                    <th
+                      key={col.key}
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        left: fixedLeftOffsets[idx],
+                        zIndex: 4,
+                        background: "#FBFBFC",
+                        minWidth: col.width,
+                        width: col.width,
+                        padding: "10px 10px",
+                        textAlign: "left",
+                        fontSize: 10,
+                        color: "rgba(17,24,39,0.7)",
+                        fontWeight: 900,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                        boxShadow: idx === fixedCols.length - 1 ? "4px 0 0 rgba(0,0,0,0.03)" : undefined,
+                      }}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+
                   {taskColumns.map((taskName) => (
-                    <td key={taskName} style={S.td}><StatusIcon task={row.tasks[taskName]} onClick={() => openTaskModal(row, taskName, row.tasks[taskName])} /></td>
+                    <th
+                      key={taskName}
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 2,
+                        background: "#FBFBFC",
+                        minWidth: 120,
+                        width: 120,
+                        padding: "10px 10px",
+                        textAlign: "center",
+                        fontSize: 10,
+                        color: "rgba(17,24,39,0.7)",
+                        fontWeight: 900,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <div>{taskName}</div>
+                      <div style={{ marginTop: 2, color: "rgba(17,24,39,0.55)" }}>{filters.phase}</div>
+                    </th>
                   ))}
                 </tr>
-              ))}
-              {!pagedRows.length ? (
-                <tr>
-                  <td style={{ ...S.td, textAlign: "center", padding: 20 }} colSpan={8 + taskColumns.length}>
-                    Nenhum projeto encontrado com os filtros atuais.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={fixedCols.length + taskColumns.length} style={{ padding: 24, textAlign: "center" }}>
+                      Carregando...
+                    </td>
+                  </tr>
+                ) : pagedRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={fixedCols.length + taskColumns.length} style={{ padding: 24, textAlign: "center" }}>
+                      Nenhum resultado encontrado.
+                    </td>
+                  </tr>
+                ) : (
+                  pagedRows.map((row) => (
+                    <tr key={row.projectId}>
+                      {fixedCols.map((col, idx) => (
+                        <td
+                          key={col.key}
+                          style={{
+                            ...S.td,
+                            position: "sticky",
+                            left: fixedLeftOffsets[idx],
+                            zIndex: 3,
+                            background: "#fff",
+                            minWidth: col.width,
+                            width: col.width,
+                            boxShadow: idx === fixedCols.length - 1 ? "4px 0 0 rgba(0,0,0,0.03)" : undefined,
+                          }}
+                        >
+                          {col.render(row)}
+                        </td>
+                      ))}
+
+                      {taskColumns.map((taskName) => {
+                        const task = row.tasks[taskName];
+                        return (
+                          <td key={`${row.projectId}-${taskName}`} style={{ ...S.td, minWidth: 120, width: 120, textAlign: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => openTaskModal(row, taskName, task)}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                padding: 0,
+                                cursor: task?.taskId ? "pointer" : "not-allowed",
+                              }}
+                              title={task?.taskId ? "Editar task" : "Task sem registro para edição"}
+                            >
+                              <StatusIcon task={task} />
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: 8,
+              padding: 12,
+              borderTop: "1px solid rgba(0,0,0,0.06)",
+            }}
+          >
+            <button style={S.btnGhost} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              ◀ Anterior
+            </button>
+            <div style={{ fontSize: 12, fontWeight: 800 }}>
+              Página {page} de {totalPages}
+            </div>
+            <button style={S.btnGhost} disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+              Próxima ▶
+            </button>
+          </div>
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 12, color: "rgba(17,24,39,0.70)", fontWeight: 700 }}>
-          Mostrando {(filteredRows.length ? (page - 1) * filters.pageSize + 1 : 0)}–{Math.min(page * filters.pageSize, filteredRows.length)} de {filteredRows.length}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button style={S.btnGhost} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>◀ Anterior</button>
-          <div style={{ ...S.btnGhost, cursor: "default", display: "flex", alignItems: "center" }}>Página {page} de {pageCount}</div>
-          <button style={S.btnGhost} disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>Próxima ▶</button>
-        </div>
-      </div>
-
-      {taskModal.open ? (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.42)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 1000 }}>
-          <div style={{ width: "min(860px, 96vw)", maxHeight: "92vh", overflowY: "auto", background: "#fff", borderRadius: 18, border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 24px 70px rgba(15,23,42,0.22)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
+      {taskModal.open && taskModal.row && taskModal.task ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.45)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 50,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 980,
+              background: "#fff",
+              borderRadius: 18,
+              boxShadow: "0 30px 80px rgba(0,0,0,0.24)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: 18,
+                borderBottom: "1px solid rgba(0,0,0,0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
               <div>
-                <div style={{ fontSize: 24, fontWeight: 900 }}>Edit task</div>
-                <div style={{ marginTop: 6, fontSize: 13, color: "rgba(17,24,39,0.70)" }}>
-                  {taskModal.row?.title} • {taskModal.taskName} • {filters.phase}
+                <div style={{ fontSize: 18, fontWeight: 900 }}>Edit task</div>
+                <div style={{ marginTop: 6, fontSize: 12, color: "rgba(17,24,39,0.60)" }}>
+                  {taskModal.row.title} • {taskModal.taskName} • {filters.phase}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button style={S.btnGhost} onClick={closeTaskModal} disabled={savingTask}>Cancelar</button>
-                <button style={S.btnPrimary} onClick={saveTaskUpdate} disabled={savingTask}>{savingTask ? "Salvando..." : "Save"}</button>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button style={S.btnGhost} onClick={closeTaskModal}>
+                  Cancelar
+                </button>
+                <button style={S.btnPrimary} onClick={saveTask} disabled={savingTask}>
+                  {savingTask ? "Salvando..." : "Save"}
+                </button>
               </div>
             </div>
 
-            <div style={{ padding: 20, display: "grid", gap: 18 }}>
-              <div style={{ fontWeight: 900, fontSize: 18 }}>About the task</div>
+            <div style={{ padding: 18, display: "grid", gap: 18 }}>
+              {editError ? <div style={{ color: "#b91c1c", fontWeight: 800 }}>{editError}</div> : null}
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div>
-                  <span style={S.label}>Title</span>
-                  <input style={S.input} value={taskModal.taskName} disabled />
-                </div>
-                <div>
-                  <span style={S.label}>Type</span>
-                  <input style={S.input} value={taskModal.task?.type || "Construction"} disabled />
-                </div>
+              <div>
+                <div style={{ fontWeight: 900, marginBottom: 10 }}>About the task</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
+                  <div>
+                    <span style={S.label}>Title</span>
+                    <input style={S.input} value={taskModal.task.title} readOnly />
+                  </div>
 
-                <div>
-                  <span style={S.label}>Status</span>
-                  <select style={S.input} value={taskForm.status} onChange={(e) => handleTaskStatusChange(e.target.value)}>
-                    <option value="Todo">Todo</option>
-                    <option value="InProgress">InProgress</option>
-                    <option value="Done">Done</option>
-                  </select>
-                </div>
-                <div>
-                  <span style={S.label}>Completed Date</span>
-                  <input type="date" style={{ ...S.input, backgroundColor: taskForm.status === "Done" ? "#fff" : "#f3f4f6" }} value={taskForm.status === "Done" ? taskForm.completedDate : ""} disabled={taskForm.status !== "Done"} onChange={(e) => setTaskForm((p) => ({ ...p, completedDate: e.target.value }))} />
-                </div>
+                  <div>
+                    <span style={S.label}>Type</span>
+                    <input style={S.input} value={taskModal.task.type || "Construction"} readOnly />
+                  </div>
 
-                <div>
-                  <span style={S.label}>Phase</span>
-                  <input style={S.input} value={filters.phase} disabled />
-                </div>
-                <div>
-                  <span style={S.label}>Start Date</span>
-                  <input type="date" style={S.input} value={taskForm.startDate} onChange={(e) => setTaskForm((p) => ({ ...p, startDate: e.target.value }))} />
-                </div>
+                  <div>
+                    <span style={S.label}>Status</span>
+                    <select style={S.input} value={taskForm.status} onChange={(e) => handleTaskStatusChange(e.target.value)}>
+                      <option value="Todo">Todo</option>
+                      <option value="InProgress">In Progress</option>
+                      <option value="Done">Done</option>
+                    </select>
+                  </div>
 
-                <div>
-                  <span style={S.label}>Work days</span>
-                  <input style={S.input} value={toStr(taskModal.task?.workDays || taskModal.task?.workdays || "")} disabled />
-                </div>
-              </div>
+                  <div>
+                    <span style={S.label}>Completed Date</span>
+                    <input
+                      type="date"
+                      style={S.input}
+                      value={taskForm.completedDate}
+                      disabled={taskForm.status !== "Done"}
+                      onChange={(e) => setTaskForm((prev) => ({ ...prev, completedDate: e.target.value }))}
+                    />
+                  </div>
 
-              <div style={{ fontWeight: 900, fontSize: 18, marginTop: 6 }}>Group team</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div>
-                  <span style={S.label}>Operator</span>
-                  <input style={S.input} value={taskModal.row?.operator || ""} disabled />
-                </div>
-                <div>
-                  <span style={S.label}>Manager</span>
-                  <input style={S.input} value={toStr(taskModal.task?.managerId || taskModal.task?.raw?.managerId || "")} disabled />
+                  <div>
+                    <span style={S.label}>Phase</span>
+                    <input style={S.input} value={filters.phase} readOnly />
+                  </div>
+
+                  <div>
+                    <span style={S.label}>Start Date</span>
+                    <input
+                      type="date"
+                      style={S.input}
+                      value={taskForm.startDate}
+                      onChange={(e) => setTaskForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <span style={S.label}>Work days</span>
+                    <input style={S.input} value={String(taskModal.task.workdays ?? taskModal.task.workDays ?? "")} readOnly />
+                  </div>
                 </div>
               </div>
 
               <div>
-                <span style={S.label}>Subvendors</span>
-                <select
-                  multiple
-                  value={taskForm.subVendorIds}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
-                    setTaskForm((p) => ({ ...p, subVendorIds: selected }));
-                  }}
-                  style={{ width: "100%", minHeight: 160, padding: 12, borderRadius: 12, border: "1px solid rgba(0,0,0,0.14)", background: "#fff", fontSize: 13, color: "#111827" }}
-                >
-                  {subvendorOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.companyName}
-                    </option>
-                  ))}
-                </select>
-                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(17,24,39,0.65)" }}>Seleção por company name, salvando somente IDs em <strong>subVendorIds</strong>.</div>
+                <div style={{ fontWeight: 900, marginBottom: 10 }}>Group team</div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
+                  <div>
+                    <span style={S.label}>Operator</span>
+                    <input style={S.input} value={taskModal.row.operator || taskModal.task.operatorId || ""} readOnly />
+                  </div>
+
+                  <div>
+                    <span style={S.label}>Manager</span>
+                    <input style={S.input} value={taskModal.task.managerId || ""} readOnly />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <span style={S.label}>Subvendors</span>
+                  <select
+                    multiple
+                    value={taskForm.subVendorIds}
+                    onChange={(e) => {
+                      const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                      setTaskForm((prev) => ({ ...prev, subVendorIds: values }));
+                    }}
+                    style={{
+                      width: "100%",
+                      minHeight: 140,
+                      padding: 10,
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.14)",
+                      outline: "none",
+                      backgroundColor: "#fff",
+                      fontSize: 13,
+                      resize: "vertical",
+                    }}
+                  >
+                    {subvendors.map((sv) => (
+                      <option key={sv.id} value={sv.id}>
+                        {sv.companyName}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ marginTop: 8, fontSize: 11, color: "rgba(17,24,39,0.60)" }}>
+                    Seleção por company name, salvando somente IDs em subVendorIds.
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       ) : null}
-
     </div>
   );
 }
