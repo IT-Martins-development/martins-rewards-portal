@@ -476,6 +476,7 @@ export default function ProjectTimelineByPhase() {
   const [editError, setEditError] = useState("");
   const [page, setPage] = useState(1);
   const [subvendors, setSubvendors] = useState<SubvendorOption[]>([]);
+  const [subvendorSearch, setSubvendorSearch] = useState("");
   const [taskModal, setTaskModal] = useState<TaskModalState>({ open: false, row: null, taskName: "", task: null });
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     status: "Todo",
@@ -762,10 +763,11 @@ export default function ProjectTimelineByPhase() {
     });
   }
 
-  function closeTaskModal() {
-    setTaskModal({ open: false, row: null, taskName: "", task: null });
-    setEditError("");
-  }
+function closeTaskModal() {
+  setTaskModal({ open: false, row: null, taskName: "", task: null });
+  setEditError("");
+  setSubvendorSearch("");
+}
 
   async function saveTask() {
     if (!taskModal.row || !taskModal.task?.taskId) {
@@ -860,78 +862,84 @@ export default function ProjectTimelineByPhase() {
     URL.revokeObjectURL(url);
   }
 
-  const fixedCols = [
-    {
-      key: "project",
-      label: "Projeto",
-      width: 220,
-      render: (row: JoinedRow) => (
-        <a
-          href={`https://martins-development.com/projects/${row.projectId}`}
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: "#7A5A3A", fontWeight: 800, textDecoration: "none" }}
-        >
-          {row.title}
-        </a>
-      ),
-    },
-    { key: "operator", label: "Operador", width: 140, render: (row: JoinedRow) => row.operator || "-" },
-    { key: "county", label: "County", width: 120, render: (row: JoinedRow) => row.county || "-" },
-    {
-      key: "projectColor",
-      label: "Farol Projeto",
-      width: 120,
-      render: (row: JoinedRow) => (
-        <span
-          style={{
-            color:
-              row.projectColor === "Vermelho"
-                ? "#dc2626"
-                : row.projectColor === "Laranja"
-                ? "#ea580c"
-                : row.projectColor === "Amarelo"
-                ? "#ca8a04"
-                : "#16a34a",
-            fontWeight: 800,
-          }}
-        >
-          {row.projectColor || "-"}
-        </span>
-      ),
-    },
-    { key: "currentPhase", label: "Fase Atual", width: 130, render: (row: JoinedRow) => row.currentPhase || "-" },
-    { key: "phaseStatus", label: "Status da Phase", width: 130, render: (row: JoinedRow) => row.phaseStatus || "-" },
-    { key: "phaseDurationDays", label: "Duração de Dias da Phase", width: 150, render: (row: JoinedRow) => row.phaseDurationDays || 0 },
-    {
-      key: "phaseColor",
-      label: "Farol da Phase",
-      width: 120,
-      render: (row: JoinedRow) => (
-        <span
-          style={{
-            color:
-              row.phaseColor === "Vermelho"
-                ? "#dc2626"
-                : row.phaseColor === "Laranja"
-                ? "#ea580c"
-                : row.phaseColor === "Amarelo"
-                ? "#ca8a04"
-                : "#16a34a",
-            fontWeight: 800,
-          }}
-        >
-          {row.phaseColor || "-"}
-        </span>
-      ),
-    },
-  ] as const;
+const fixedCols = [
+  {
+    key: "project",
+    label: "Projeto",
+    width: 220,
+    render: (row: JoinedRow) => (
+      <a
+        href={`https://martins-development.com/projects/${row.projectId}`}
+        target="_blank"
+        rel="noreferrer"
+        style={{ color: "#7A5A3A", fontWeight: 800, textDecoration: "none" }}
+      >
+        {row.title}
+      </a>
+    ),
+  },
+] as const;
 
-  const fixedLeftOffsets = fixedCols.reduce<number[]>((acc, col, idx) => {
-    if (idx === 0) acc.push(0);
-    else acc.push(acc[idx - 1] + fixedCols[idx - 1].width);
-    return acc;
-  }, []);
+const scrollCols = [
+  { key: "operator", label: "Operador", width: 140, render: (row: JoinedRow) => row.operator || "-" },
+  { key: "county", label: "County", width: 120, render: (row: JoinedRow) => row.county || "-" },
+  {
+    key: "projectColor",
+    label: "Farol Projeto",
+    width: 120,
+    render: (row: JoinedRow) => (
+      <span
+        style={{
+          color:
+            row.projectColor === "Vermelho"
+              ? "#dc2626"
+              : row.projectColor === "Laranja"
+              ? "#ea580c"
+              : row.projectColor === "Amarelo"
+              ? "#ca8a04"
+              : "#16a34a",
+          fontWeight: 800,
+        }}
+      >
+        {row.projectColor || "-"}
+      </span>
+    ),
+  },
+  { key: "currentPhase", label: "Fase Atual", width: 130, render: (row: JoinedRow) => row.currentPhase || "-" },
+  { key: "phaseStatus", label: "Status da Phase", width: 130, render: (row: JoinedRow) => row.phaseStatus || "-" },
+  { key: "phaseDurationDays", label: "Duração de Dias da Phase", width: 150, render: (row: JoinedRow) => row.phaseDurationDays || 0 },
+  {
+    key: "phaseColor",
+    label: "Farol da Phase",
+    width: 120,
+    render: (row: JoinedRow) => (
+      <span
+        style={{
+          color:
+            row.phaseColor === "Vermelho"
+              ? "#dc2626"
+              : row.phaseColor === "Laranja"
+              ? "#ea580c"
+              : row.phaseColor === "Amarelo"
+              ? "#ca8a04"
+              : "#16a34a",
+          fontWeight: 800,
+        }}
+      >
+        {row.phaseColor || "-"}
+      </span>
+    ),
+  },
+] as const;
+
+  const fixedLeftOffsets = 0;
+  const projectStickyLeft = 0;
+
+  const filteredSubvendors = useMemo(() => {
+  const term = subvendorSearch.trim().toLowerCase();
+  if (!term) return subvendors;
+  return subvendors.filter((sv) => sv.companyName.toLowerCase().includes(term));
+}, [subvendors, subvendorSearch]);
 
   return (
     <div style={{ background: "#0b1220", minHeight: "100vh", padding: 16 }}>
@@ -1084,13 +1092,13 @@ export default function ProjectTimelineByPhase() {
             >
               <thead>
                 <tr>
-                  {fixedCols.map((col, idx) => (
+                  {fixedCols.map((col) => (
                     <th
                       key={col.key}
                       style={{
                         position: "sticky",
                         top: 0,
-                        left: fixedLeftOffsets[idx],
+                        left: projectStickyLeft,
                         zIndex: 4,
                         background: "#FBFBFC",
                         minWidth: col.width,
@@ -1101,7 +1109,29 @@ export default function ProjectTimelineByPhase() {
                         color: "rgba(17,24,39,0.7)",
                         fontWeight: 900,
                         borderBottom: "1px solid rgba(0,0,0,0.06)",
-                        boxShadow: idx === fixedCols.length - 1 ? "4px 0 0 rgba(0,0,0,0.03)" : undefined,
+                        boxShadow: "4px 0 0 rgba(0,0,0,0.03)",
+                      }}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+
+                  {scrollCols.map((col) => (
+                    <th
+                      key={col.key}
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 2,
+                        background: "#FBFBFC",
+                        minWidth: col.width,
+                        width: col.width,
+                        padding: "10px 10px",
+                        textAlign: "left",
+                        fontSize: 10,
+                        color: "rgba(17,24,39,0.7)",
+                        fontWeight: 900,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
                       }}
                     >
                       {col.label}
@@ -1136,31 +1166,44 @@ export default function ProjectTimelineByPhase() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={fixedCols.length + taskColumns.length} style={{ padding: 24, textAlign: "center" }}>
+                    <td colSpan={fixedCols.length + scrollCols.length + taskColumns.length} style={{ padding: 24, textAlign: "center" }}>
                       Carregando...
                     </td>
                   </tr>
                 ) : pagedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={fixedCols.length + taskColumns.length} style={{ padding: 24, textAlign: "center" }}>
+                    <td colSpan={fixedCols.length + scrollCols.length + taskColumns.length} style={{ padding: 24, textAlign: "center" }}>
                       Nenhum resultado encontrado.
                     </td>
                   </tr>
                 ) : (
                   pagedRows.map((row) => (
                     <tr key={row.projectId}>
-                      {fixedCols.map((col, idx) => (
+                      {fixedCols.map((col) => (
                         <td
                           key={col.key}
                           style={{
                             ...S.td,
                             position: "sticky",
-                            left: fixedLeftOffsets[idx],
+                            left: projectStickyLeft,
                             zIndex: 3,
                             background: "#fff",
                             minWidth: col.width,
                             width: col.width,
-                            boxShadow: idx === fixedCols.length - 1 ? "4px 0 0 rgba(0,0,0,0.03)" : undefined,
+                            boxShadow: "4px 0 0 rgba(0,0,0,0.03)",
+                          }}
+                        >
+                          {col.render(row)}
+                        </td>
+                      ))}
+
+                      {scrollCols.map((col) => (
+                        <td
+                          key={col.key}
+                          style={{
+                            ...S.td,
+                            minWidth: col.width,
+                            width: col.width,
                           }}
                         >
                           {col.render(row)}
@@ -1340,6 +1383,14 @@ export default function ProjectTimelineByPhase() {
 
                 <div style={{ marginTop: 12 }}>
                   <span style={S.label}>Subvendors</span>
+
+                  <input
+                    style={{ ...S.input, marginBottom: 8 }}
+                    placeholder="Pesquisar subvendor por nome..."
+                    value={subvendorSearch}
+                    onChange={(e) => setSubvendorSearch(e.target.value)}
+                  />
+
                   <select
                     multiple
                     value={taskForm.subVendorIds}
@@ -1359,14 +1410,15 @@ export default function ProjectTimelineByPhase() {
                       resize: "vertical",
                     }}
                   >
-                    {subvendors.map((sv) => (
+                    {filteredSubvendors.map((sv) => (
                       <option key={sv.id} value={sv.id}>
                         {sv.companyName}
                       </option>
                     ))}
                   </select>
+
                   <div style={{ marginTop: 8, fontSize: 11, color: "rgba(17,24,39,0.60)" }}>
-                    Seleção por company name, salvando somente IDs em subVendorIds.
+                    Pesquise por nome e selecione por company name. O sistema salva somente IDs em subVendorIds.
                   </div>
                 </div>
               </div>
