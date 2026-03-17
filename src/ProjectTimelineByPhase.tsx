@@ -247,6 +247,18 @@ function toStr(v: any) {
   return String(v);
 }
 
+
+
+function normalizeTaskName(value: any) {
+  return toStr(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 function parseApiArray(data: TimelineApiResponse | AnyObj): any[] {
   if (Array.isArray((data as any)?.rows)) return (data as any).rows;
   if (Array.isArray(data)) return data as any[];
@@ -737,21 +749,30 @@ export default function ProjectTimelineByPhase() {
 
     for (const row of projectStatusRows) {
       const bucket: Record<string, TaskDoc | null> = {};
-      for (const taskName of taskColumns) bucket[taskName] = null;
+      for (const taskName of taskColumns) {
+        bucket[normalizeTaskName(taskName)] = null;
+      }
       taskMapByProject.set(row.projectId, bucket);
     }
 
     for (const task of tasks) {
       if (!taskMapByProject.has(task.projectId)) continue;
       const bucket = taskMapByProject.get(task.projectId)!;
-      const key = task.title;
+      const key = normalizeTaskName(task.title);
       if (key in bucket) bucket[key] = task;
     }
 
-    return projectStatusRows.map((row) => ({
-      ...row,
-      tasks: taskMapByProject.get(row.projectId) || {},
-    }));
+    return projectStatusRows.map((row) => {
+      const rawBucket = taskMapByProject.get(row.projectId) || {};
+      const orderedTasks: Record<string, TaskDoc | null> = {};
+      for (const taskName of taskColumns) {
+        orderedTasks[taskName] = rawBucket[normalizeTaskName(taskName)] || null;
+      }
+      return {
+        ...row,
+        tasks: orderedTasks,
+      };
+    });
   }, [projectStatusRows, tasks, taskColumns]);
 
   const filteredRows = useMemo(() => {
