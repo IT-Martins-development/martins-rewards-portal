@@ -18,8 +18,8 @@ type Filters = {
 
 const COLOR_LABELS = ["Verde", "Amarelo", "Laranja", "Vermelho"] as const;
 const STATUS_OPTIONS = ["In Progress", "Concluded", "Delayed", "On Hold"] as const;
-const PHASE_OPTIONS = ["Phase 1", "Phase 2", "Phase 3"] as const;
-const PHASE_ORDER = ["Phase 1", "Phase 2", "Phase 3", "Concluded"] as const;
+const PHASE_OPTIONS = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Final Phase"] as const;
+const PHASE_ORDER = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Final Phase", "Concluded"] as const;
 const COLOR_MAP: Record<string, string> = {
   Verde: "#22c55e",
   Amarelo: "#eab308",
@@ -59,8 +59,20 @@ function statusColor(status: string) {
   }
 }
 
+function normalizePhaseName(v: any) {
+  const s = toStr(v).trim().toLowerCase();
+
+  if (["pre construction", "pre-construction", "preconstruction"].includes(s)) return "Pre Construction";
+  if (["phase 1", "phase1"].includes(s)) return "Phase 1";
+  if (["phase 2", "phase2"].includes(s)) return "Phase 2";
+  if (["phase 3", "phase3"].includes(s)) return "Phase 3";
+  if (["final phase", "finalphase", "f inal phase", "f inalphase"].includes(s)) return "Final Phase";
+  if (s === "concluded") return "Concluded";
+  return toStr(v) || "Sem fase";
+}
+
 function getPhaseValue(p: AnyObj) {
-  return toStr(p.currentPhase || p.faseAtual || "Sem fase") || "Sem fase";
+  return normalizePhaseName(p.currentPhase || p.faseAtual || "Sem fase");
 }
 
 function getProjectColorValue(p: AnyObj) {
@@ -699,6 +711,9 @@ export default function ProjectControl() {
       "Restante",
       "Farol",
       "Farol Phase",
+      "Inicio Pre Construction",
+      "Fim Pre Construction",
+      "Status Pre Construction",
       "Inicio P1",
       "Fim P1",
       "Status P1",
@@ -708,6 +723,9 @@ export default function ProjectControl() {
       "Inicio P3",
       "Fim P3",
       "Status P3",
+      "Inicio Final Phase",
+      "Fim Final Phase",
+      "Status Final Phase",
       "JUSTIFICATIVA",
     ];
 
@@ -725,6 +743,9 @@ export default function ProjectControl() {
       p.daysRemaining || 0,
       getProjectColorValue(p),
       getPhaseColorValue(p),
+      p.StartDatePreConstruction || "",
+      p.EndDatePreConstruction || "",
+      p.StatusPreConstruction || "N/A",
       p.StartDatePhase1 || "",
       p.EndDatePhase1 || "",
       p.StatusPhase1 || "",
@@ -734,6 +755,9 @@ export default function ProjectControl() {
       p.StartDatePhase3 || "",
       p.EndDatePhase3 || "",
       p.StatusPhase3 || "",
+      p.StartDateFinalPhase || "",
+      p.EndDateFinalPhase || "",
+      p.StatusFinalPhase || "N/A",
       `"${p.reason || ""}"`,
     ]);
 
@@ -1047,6 +1071,9 @@ export default function ProjectControl() {
                   <th style={S.th}>D. Fase</th>
                   <th style={S.th}>D. Totais</th>
                   <th style={S.th}>Restante</th>
+                  <th style={S.th}>Start Pre</th>
+                  <th style={S.th}>End Pre</th>
+                  <th style={S.th}>Status Pre</th>
                   <th style={S.th}>Start P1</th>
                   <th style={S.th}>End P1</th>
                   <th style={S.th}>Status P1</th>
@@ -1056,6 +1083,9 @@ export default function ProjectControl() {
                   <th style={S.th}>Start P3</th>
                   <th style={S.th}>End P3</th>
                   <th style={S.th}>Status P3</th>
+                  <th style={S.th}>Start Final</th>
+                  <th style={S.th}>End Final</th>
+                  <th style={S.th}>Status Final</th>
                   <th style={S.th}>Ações</th>
                 </tr>
               </thead>
@@ -1076,6 +1106,9 @@ export default function ProjectControl() {
                     <td style={{ ...S.td, color: normLong(p.daysRemaining) < 0 ? "#b91c1c" : "#15803d", fontWeight: 900 }}>
                       {p.daysRemaining || 0}
                     </td>
+                    <td style={S.td}>{p.StartDatePreConstruction || ""}</td>
+                    <td style={S.td}>{p.EndDatePreConstruction || ""}</td>
+                    <td style={S.td}>{p.StatusPreConstruction || "N/A"}</td>
                     <td style={S.td}>{p.StartDatePhase1 || ""}</td>
                     <td style={S.td}>{p.EndDatePhase1 || ""}</td>
                     <td style={S.td}>{p.StatusPhase1 || ""}</td>
@@ -1085,6 +1118,9 @@ export default function ProjectControl() {
                     <td style={S.td}>{p.StartDatePhase3 || ""}</td>
                     <td style={S.td}>{p.EndDatePhase3 || ""}</td>
                     <td style={S.td}>{p.StatusPhase3 || ""}</td>
+                    <td style={S.td}>{p.StartDateFinalPhase || ""}</td>
+                    <td style={S.td}>{p.EndDateFinalPhase || ""}</td>
+                    <td style={S.td}>{p.StatusFinalPhase || "N/A"}</td>
                     <td style={S.td}>
                       <button style={{ ...S.btnGhost, padding: "6px 10px", height: "auto" }} onClick={() => openJustify(p)}>
                         Justificar
@@ -1094,7 +1130,7 @@ export default function ProjectControl() {
                 ))}
                 {pagedProjects.length === 0 && (
                   <tr>
-                    <td style={S.td} colSpan={22}>Nenhum registro encontrado.</td>
+                    <td style={S.td} colSpan={28}>Nenhum registro encontrado.</td>
                   </tr>
                 )}
               </tbody>
