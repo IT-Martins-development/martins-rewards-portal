@@ -520,8 +520,8 @@ function normalizeTimelineApiRow(row: any, phase: PhaseKey): { project: ProjectS
   const taskDocs: TaskDoc[] = Object.keys(tasksObj).map((key) => {
     const t = tasksObj[key] || {};
     return {
-      taskId: toStr(t.taskId || ""),
-      projectId: toStr(row.projectId),
+      taskId: toStr(t.taskId || t._id || ""),
+      projectId: toStr(row.projectId || t.projectId),
       phase,
       title: toStr(t.title || key),
       status: toStr(t.status || "Todo"),
@@ -851,7 +851,9 @@ export default function ProjectTimelineByPhase() {
   function openTaskModal(row: JoinedRow, taskName: string, task: TaskDoc | null) {
     setEditError("");
 
-    if (!task || !task.taskId) {
+    const effectiveTaskId = task?.taskId || toStr(task?.raw?._id || "");
+
+    if (!task || !effectiveTaskId) {
       setEditError("Esta tarefa ainda não possui registro real na collection tasks para edição.");
       return;
     }
@@ -912,7 +914,7 @@ function closeTaskModal() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          taskId: taskModal.task.taskId,
+          taskId: taskModal.task.taskId || toStr(taskModal.task.raw?._id || ""),
           projectId: taskModal.row.projectId,
           userId,
           status: taskForm.status,
