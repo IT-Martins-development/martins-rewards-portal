@@ -115,7 +115,7 @@ const PHASES: PhaseKey[] = [
 ];
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
 const COLOR_OPTIONS = ["Verde", "Amarelo", "Laranja", "Vermelho"];
-const CURRENT_PHASE_OPTIONS = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Utilities", "Supplies", "Concluded"];
+const CURRENT_PHASE_OPTIONS = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Final Phase" ,"Utilities", "Supplies", "Concluded"];
 const PHASE_STATUS_OPTIONS = ["Todo", "Pending", "In Progress", "Done", "Delayed", "On Hold", "Concluded"];
 
 const TASK_ORDER: Record<PhaseKey, string[]> = {
