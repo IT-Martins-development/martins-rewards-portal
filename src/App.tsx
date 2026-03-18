@@ -19,6 +19,7 @@ export type { Lang } from "./types/lang";
 type Role = "ADMIN" | "INVESTOR" | "NONE";
 
 type Page =
+  | "home"
   | "crud"
   | "approvals"
   | "report"
@@ -41,9 +42,23 @@ const shell: React.CSSProperties = {
   color: "#111827",
 };
 
+const layout: React.CSSProperties = {
+  display: "grid",
+  gap: 0,
+  minHeight: "100vh",
+};
+
+const sidebar: React.CSSProperties = {
+  background: "#FFFFFF",
+  borderRight: "1px solid rgba(17,24,39,.08)",
+  boxShadow: "4px 0 24px rgba(15,23,42,.04)",
+  transition: "all 0.25s ease",
+};
+
 const brand: React.CSSProperties = {
   fontWeight: 900,
   fontSize: 22,
+  marginBottom: 18,
   color: "#111827",
 };
 
@@ -53,6 +68,53 @@ const menuTitle: React.CSSProperties = {
   letterSpacing: 0.8,
   marginBottom: 10,
   fontWeight: 900,
+};
+
+const groupButtonBase: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  textAlign: "left",
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid rgba(17,24,39,.08)",
+  background: "#F9FAFB",
+  color: "#111827",
+  cursor: "pointer",
+  marginBottom: 8,
+  fontWeight: 800,
+};
+
+const groupButtonActive: React.CSSProperties = {
+  ...groupButtonBase,
+  background: "#F3EFE8",
+  border: "1px solid rgba(122,90,58,.22)",
+};
+
+const subMenuWrap: React.CSSProperties = {
+  margin: "2px 0 12px 0",
+  paddingLeft: 10,
+};
+
+const subBtnBase: React.CSSProperties = {
+  width: "100%",
+  textAlign: "left",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid transparent",
+  background: "transparent",
+  color: "#374151",
+  cursor: "pointer",
+  marginBottom: 6,
+  fontWeight: 700,
+};
+
+const subBtnActive: React.CSSProperties = {
+  ...subBtnBase,
+  background: "#7A5A3A",
+  color: "#fff",
+  border: "1px solid #7A5A3A",
 };
 
 const contentWrap: React.CSSProperties = {
@@ -128,9 +190,62 @@ function PlaceholderPage({
   );
 }
 
+function HomePage({ onOpen }: { onOpen: (page: Page) => void }) {
+  const quickLinks: Array<{ page: Exclude<Page, "home">; title: string; description: string }> = [
+    {
+      page: "crud",
+      title: "Rewards",
+      description: "Gerencie cadastro, edição e organização dos rewards.",
+    },
+    {
+      page: "approvals",
+      title: "Aprovações",
+      description: "Revise solicitações pendentes e acompanhe decisões.",
+    },
+    {
+      page: "projects",
+      title: "Projetos",
+      description: "Acesse a visão operacional dos projetos em andamento.",
+    },
+    {
+      page: "timeline",
+      title: "Timeline by Phase",
+      description: "Veja a timeline por fase com status das tasks do projeto.",
+    },
+  ];
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div style={placeholderCard}>
+        <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 8 }}>Portal Martins Development</div>
+        <div style={{ color: "#6B7280", fontSize: 14 }}>
+          Escolha um modulo no menu lateral ou use os atalhos abaixo para abrir as areas mais usadas.
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        {quickLinks.map((item) => (
+          <button
+            key={item.page}
+            type="button"
+            onClick={() => onOpen(item.page)}
+            style={{
+              ...placeholderCard,
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>{item.title}</div>
+            <div style={{ color: "#6B7280", fontSize: 14 }}>{item.description}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MenuGroup({
   title,
-  shortLabel,
   open,
   active,
   collapsed,
@@ -138,64 +253,43 @@ function MenuGroup({
   children,
 }: {
   title: string;
-  shortLabel: string;
   open: boolean;
   active: boolean;
   collapsed: boolean;
   onToggle: () => void;
   children: React.ReactNode;
 }) {
-  const groupButtonBase: React.CSSProperties = {
-    width: "100%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: collapsed ? "center" : "space-between",
-    textAlign: "left",
-    padding: collapsed ? "12px 8px" : "12px 14px",
-    borderRadius: 12,
-    border: "1px solid rgba(17,24,39,.08)",
-    background: "#F9FAFB",
-    color: "#111827",
-    cursor: "pointer",
-    marginBottom: 8,
-    fontWeight: 800,
-    transition: "all .2s ease",
-  };
-
-  const groupButtonActive: React.CSSProperties = {
-    ...groupButtonBase,
-    background: "#F3EFE8",
-    border: "1px solid rgba(122,90,58,.22)",
-  };
-
-  const subMenuWrap: React.CSSProperties = {
-    margin: "2px 0 12px 0",
-    paddingLeft: 10,
-  };
-
   return (
     <div>
       <button
         type="button"
-        title={collapsed ? title : undefined}
         style={active || open ? groupButtonActive : groupButtonBase}
         onClick={onToggle}
       >
-        <span>{collapsed ? shortLabel : title}</span>
-        {!collapsed ? <span style={{ fontSize: 14 }}>{open ? "▾" : "▸"}</span> : null}
+        <span>{collapsed ? title[0] : title}</span>
+        <span style={{ fontSize: 14 }}>{open ? "▾" : "▸"}</span>
       </button>
-
-      {open && !collapsed ? <div style={subMenuWrap}>{children}</div> : null}
+        {open && !collapsed ? <div style={subMenuWrap}>{children}</div> : null}
     </div>
   );
 }
 
 function AppShell({ signOut }: { signOut?: () => void }) {
-  const [page, setPage] = useState<Page>("crud");
+  const [page, setPage] = useState<Page>("home");
   const [lang, setLang] = useState<Lang>("pt");
   const [role, setRole] = useState<Role>("NONE");
   const [checking, setChecking] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+
+  const layoutStyle: React.CSSProperties = {
+    ...layout,
+    gridTemplateColumns: collapsed ? "80px 1fr" : "280px 1fr",
+  };
+
+  const sidebarStyle: React.CSSProperties = {
+    ...sidebar,
+    padding: collapsed ? "18px 10px" : "18px",
+  };
 
   const [openGroups, setOpenGroups] = useState<Record<MenuGroupKey, boolean>>({
     "rewards-admin": true,
@@ -204,48 +298,13 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     approvals: false,
   });
 
-  const layout: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: collapsed ? "88px 1fr" : "280px 1fr",
-    transition: "grid-template-columns 0.25s ease",
-    gap: 0,
-    minHeight: "100vh",
-  };
-
-  const sidebar: React.CSSProperties = {
-    background: "#FFFFFF",
-    padding: collapsed ? "18px 10px" : "18px",
-    borderRight: "1px solid rgba(17,24,39,.08)",
-    boxShadow: "4px 0 24px rgba(15,23,42,.04)",
-    transition: "all 0.25s ease",
-  };
-
-  const subBtnBase: React.CSSProperties = {
-    width: "100%",
-    textAlign: "left",
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: "1px solid transparent",
-    background: "transparent",
-    color: "#374151",
-    cursor: "pointer",
-    marginBottom: 6,
-    fontWeight: 700,
-  };
-
-  const subBtnActive: React.CSSProperties = {
-    ...subBtnBase,
-    background: "#7A5A3A",
-    color: "#fff",
-    border: "1px solid #7A5A3A",
-  };
-
   const langLabel = useMemo<Uppercase<Lang>>(() => {
     const m: Record<Lang, Uppercase<Lang>> = { pt: "PT", en: "EN", es: "ES" };
     return m[lang];
   }, [lang]);
 
-  const pageGroup: Record<Page, MenuGroupKey> = {
+  const pageGroup: Record<Page, MenuGroupKey | null> = {
+    home: null,
     crud: "rewards-admin",
     approvals: "rewards-admin",
     report: "rewards-admin",
@@ -264,7 +323,9 @@ function AppShell({ signOut }: { signOut?: () => void }) {
   function openPage(nextPage: Page) {
     setPage(nextPage);
     const group = pageGroup[nextPage];
-    setOpenGroups((prev) => ({ ...prev, [group]: true }));
+    if (group) {
+      setOpenGroups((prev) => ({ ...prev, [group]: true }));
+    }
   }
 
   useEffect(() => {
@@ -366,74 +427,45 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 
   return (
     <div style={shell}>
-      <div style={layout}>
-        <aside style={sidebar}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: collapsed ? "center" : "space-between",
-              alignItems: "center",
-              marginBottom: 18,
-              gap: 10,
-            }}
-          >
-            {!collapsed ? <div style={brand}>• Martins Development</div> : null}
+      <div style={layoutStyle}>
+        <aside style={sidebarStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {!collapsed && <div style={brand}>• Martins Development</div>}
 
             <button
-              type="button"
-              title={collapsed ? "Expandir menu" : "Recolher menu"}
-              onClick={() => setCollapsed((v) => !v)}
+              onClick={() => setCollapsed(!collapsed)}
               style={{
-                border: "1px solid rgba(17,24,39,.08)",
+                border: "none",
                 background: "#F3EFE8",
-                borderRadius: 10,
-                padding: "7px 10px",
+                borderRadius: 8,
+                padding: "6px 10px",
                 cursor: "pointer",
                 fontWeight: 900,
-                color: "#7A5A3A",
               }}
             >
               {collapsed ? "☰" : "⟨"}
             </button>
           </div>
 
-          {!collapsed ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-              <div
-                style={{ color: "#6B7280", fontSize: 12, fontWeight: 900, letterSpacing: 0.6 }}
-              >
-                LANG
-              </div>
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value as Lang)}
-                style={selectLight}
-              >
-                <option value="pt">PT</option>
-                <option value="en">EN</option>
-                <option value="es">ES</option>
-              </select>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+            <div style={{ color: "#6B7280", fontSize: 12, fontWeight: 900, letterSpacing: 0.6 }}>
+              LANG
             </div>
-          ) : (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value as Lang)}
-                style={{ ...selectLight, width: 56, padding: "0 4px", fontSize: 12 }}
-                title="Idioma"
-              >
-                <option value="pt">PT</option>
-                <option value="en">EN</option>
-                <option value="es">ES</option>
-              </select>
-            </div>
-          )}
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value as Lang)}
+              style={selectLight}
+            >
+              <option value="pt">PT</option>
+              <option value="en">EN</option>
+              <option value="es">ES</option>
+            </select>
+          </div>
 
-          {!collapsed ? <div style={menuTitle}>MENU</div> : null}
+          <div style={menuTitle}>MENU</div>
 
           <MenuGroup
             title="Modulo Rewards ADMIN"
-            shortLabel="R"
             open={openGroups["rewards-admin"]}
             active={pageGroup[page] === "rewards-admin"}
             collapsed={collapsed}
@@ -467,7 +499,6 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 
           <MenuGroup
             title="Project Management Master"
-            shortLabel="P"
             open={openGroups["project-management-master"]}
             active={pageGroup[page] === "project-management-master"}
             collapsed={collapsed}
@@ -489,7 +520,6 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 
           <MenuGroup
             title="Finance"
-            shortLabel="F"
             open={openGroups.finance}
             active={pageGroup[page] === "finance"}
             collapsed={collapsed}
@@ -511,7 +541,6 @@ function AppShell({ signOut }: { signOut?: () => void }) {
 
           <MenuGroup
             title="Approvals"
-            shortLabel="A"
             open={openGroups.approvals}
             active={pageGroup[page] === "approvals"}
             collapsed={collapsed}
@@ -533,6 +562,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             </button>
           </div>
 
+          {page === "home" && <HomePage onOpen={openPage} />}
           {page === "crud" && <RewardsCRUD lang={lang} />}
           {page === "approvals" && <RewardsApprovals lang={lang} />}
           {page === "report" && <RewardsReport lang={langLabel} />}
