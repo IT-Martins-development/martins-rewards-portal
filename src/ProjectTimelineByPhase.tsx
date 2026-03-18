@@ -654,16 +654,16 @@ export default function ProjectTimelineByPhase() {
   });
 
   const S: Record<string, React.CSSProperties> = {
-    page: {
+  page: {
       background: "#fff",
       borderRadius: 12,
       padding: 18,
       border: "1px solid rgba(0,0,0,0.06)",
       width: "100%",
-      maxWidth: 1800,
-      margin: "0 auto",
+      maxWidth: "none",
+      margin: 0,
       color: "#111827",
-    },
+  },
     header: { display: "flex", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" },
     btnPrimary: {
       background: "#7A5A3A",
@@ -1108,7 +1108,7 @@ const scrollCols = [
 }, [subvendors, subvendorSearch]);
 
   return (
-    <div style={{ background: "#0b1220", minHeight: "100vh", padding: 16 }}>
+    <div style={{ background: "transparent", minHeight: "100%", padding: 0 }}>
       <div style={S.page}>
         <div style={S.header}>
           <div>
