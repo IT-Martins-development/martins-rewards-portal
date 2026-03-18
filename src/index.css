@@ -9,17 +9,17 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-html, body{
+html, body, #root{
   height: 100%;
 }
 
 body{
   margin: 0;
-  background: #1f1f1f;
-  color: #f5f5f5;
+  background: #f6f7f9;
+  color: #111827;
 }
 
-/* Important: make form text visible (avoid white-on-white) */
+/* Important: keep form text visible */
 input, textarea, select{
   color: #111 !important;
   background: #fff;
@@ -29,7 +29,22 @@ input::placeholder, textarea::placeholder{
   color: #777;
 }
 
-/* Buttons inherit your inline styles; keep sane defaults */
 button{
   font-family: inherit;
+}
+
+/* Amplify auth page lighter */
+[data-amplify-authenticator]{
+  min-height: 100vh;
+  background: #f6f7f9;
+}
+
+[data-amplify-container]{
+  box-shadow: 0 12px 32px rgba(15,23,42,.08) !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(17,24,39,.08) !important;
+}
+
+[data-amplify-router]{
+  background: #fff !important;
 }
