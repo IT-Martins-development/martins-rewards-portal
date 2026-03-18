@@ -115,16 +115,7 @@ const PHASES: PhaseKey[] = [
 ];
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
 const COLOR_OPTIONS = ["Verde", "Amarelo", "Laranja", "Vermelho"];
-const CURRENT_PHASE_OPTIONS = [
-  "Pre Construction",
-  "Phase 1",
-  "Phase 2",
-  "Phase 3",
-  "Final Phase",
-  "Utilities",
-  "Supplies",
-  "Concluded",
-];
+const CURRENT_PHASE_OPTIONS = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Utilities", "Supplies", "Concluded"];
 const PHASE_STATUS_OPTIONS = ["Todo", "Pending", "In Progress", "Done", "Delayed", "On Hold", "Concluded"];
 
 const TASK_ORDER: Record<PhaseKey, string[]> = {
@@ -657,13 +648,12 @@ export default function ProjectTimelineByPhase() {
     page: {
       background: "#fff",
       borderRadius: 12,
-      padding: 14,
+      padding: 18,
       border: "1px solid rgba(0,0,0,0.06)",
       width: "100%",
-      maxWidth: "none",
-      margin: 0,
+      maxWidth: 1800,
+      margin: "0 auto",
       color: "#111827",
-      boxSizing: "border-box",
     },
     header: { display: "flex", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" },
     btnPrimary: {
@@ -1029,12 +1019,7 @@ function closeTaskModal() {
     URL.revokeObjectURL(url);
   }
 
-const fixedCols: Array<{
-  key: string;
-  label: string;
-  width: number;
-  render: (row: JoinedRow) => React.ReactNode;
-}> = [
+const fixedCols = [
   {
     key: "project",
     label: "Projeto",
@@ -1044,49 +1029,65 @@ const fixedCols: Array<{
         href={`https://martins-development.com/projects/${row.projectId}`}
         target="_blank"
         rel="noreferrer"
-        style={{
-          color: "#7A5A3A",
-          fontWeight: 800,
-          textDecoration: "none",
-        }}
+        style={{ color: "#7A5A3A", fontWeight: 800, textDecoration: "none" }}
       >
         {row.title}
       </a>
     ),
   },
-];
+] as const;
 
-const scrollCols: Array<{
-  key: string;
-  label: string;
-  width: number;
-  render: (row: JoinedRow) => React.ReactNode;
-}> = [
-  { key: "operator", label: "Operador", width: 140, render: (r: JoinedRow) => r.operator || "-" },
-  { key: "county", label: "County", width: 120, render: (r: JoinedRow) => r.county || "-" },
-
+const scrollCols = [
+  { key: "operator", label: "Operador", width: 140, render: (row: JoinedRow) => row.operator || "-" },
+  { key: "county", label: "County", width: 120, render: (row: JoinedRow) => row.county || "-" },
   {
     key: "projectColor",
     label: "Farol Projeto",
     width: 120,
-    render: (r: JoinedRow) => (
-      <span style={{ fontWeight: 800 }}>{r.projectColor || "-"}</span>
+    render: (row: JoinedRow) => (
+      <span
+        style={{
+          color:
+            row.projectColor === "Vermelho"
+              ? "#dc2626"
+              : row.projectColor === "Laranja"
+              ? "#ea580c"
+              : row.projectColor === "Amarelo"
+              ? "#ca8a04"
+              : "#16a34a",
+          fontWeight: 800,
+        }}
+      >
+        {row.projectColor || "-"}
+      </span>
     ),
   },
-
-  { key: "currentPhase", label: "Fase Atual", width: 130, render: (r: JoinedRow) => r.currentPhase || "-" },
-  { key: "phaseStatus", label: "Status da Phase", width: 130, render: (r: JoinedRow) => r.phaseStatus || "-" },
-  { key: "phaseDurationDays", label: "Duração de Dias", width: 140, render: (r: JoinedRow) => r.phaseDurationDays || 0 },
-
+  { key: "currentPhase", label: "Fase Atual", width: 130, render: (row: JoinedRow) => row.currentPhase || "-" },
+  { key: "phaseStatus", label: "Status da Phase", width: 130, render: (row: JoinedRow) => row.phaseStatus || "-" },
+  { key: "phaseDurationDays", label: "Duração de Dias da Phase", width: 150, render: (row: JoinedRow) => row.phaseDurationDays || 0 },
   {
     key: "phaseColor",
     label: "Farol da Phase",
     width: 120,
-    render: (r: JoinedRow) => (
-      <span style={{ fontWeight: 800 }}>{r.phaseColor || "-"}</span>
+    render: (row: JoinedRow) => (
+      <span
+        style={{
+          color:
+            row.phaseColor === "Vermelho"
+              ? "#dc2626"
+              : row.phaseColor === "Laranja"
+              ? "#ea580c"
+              : row.phaseColor === "Amarelo"
+              ? "#ca8a04"
+              : "#16a34a",
+          fontWeight: 800,
+        }}
+      >
+        {row.phaseColor || "-"}
+      </span>
     ),
   },
-];
+] as const;
 
   const fixedLeftOffsets = 0;
   const projectStickyLeft = 0;
@@ -1098,7 +1099,7 @@ const scrollCols: Array<{
 }, [subvendors, subvendorSearch]);
 
   return (
-    <div style={{ background: "transparent", minHeight: "100%", padding: 12 }}>
+    <div style={{ background: "#0b1220", minHeight: "100vh", padding: 16 }}>
       <div style={S.page}>
         <div style={S.header}>
           <div>
@@ -1117,15 +1118,7 @@ const scrollCols: Array<{
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(8, minmax(120px, 1fr))",
-            gap: 8,
-            marginBottom: 14,
-            alignItems: "end",
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr)) 180px", gap: 10, marginBottom: 16 }}>
           <div>
             <span style={S.label}>Phase</span>
             <select style={S.input} value={filters.phase} onChange={(e) => setFilters((p) => ({ ...p, phase: e.target.value as PhaseKey }))}>
@@ -1261,11 +1254,18 @@ const scrollCols: Array<{
                       key={col.key}
                       style={{
                         position: "sticky",
-                        left: 0,
                         top: 0,
+                        left: projectStickyLeft,
                         zIndex: 4,
                         background: "#FBFBFC",
                         minWidth: col.width,
+                        width: col.width,
+                        padding: "10px 10px",
+                        textAlign: "left",
+                        fontSize: 10,
+                        color: "rgba(17,24,39,0.7)",
+                        fontWeight: 900,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
                         boxShadow: "4px 0 0 rgba(0,0,0,0.03)",
                       }}
                     >
@@ -1274,14 +1274,47 @@ const scrollCols: Array<{
                   ))}
 
                   {scrollCols.map((col) => (
-                    <th key={col.key} style={{ position: "sticky", top: 0, background: "#FBFBFC" }}>
+                    <th
+                      key={col.key}
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 2,
+                        background: "#FBFBFC",
+                        minWidth: col.width,
+                        width: col.width,
+                        padding: "10px 10px",
+                        textAlign: "left",
+                        fontSize: 10,
+                        color: "rgba(17,24,39,0.7)",
+                        fontWeight: 900,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                      }}
+                    >
                       {col.label}
                     </th>
                   ))}
 
                   {taskColumns.map((taskName) => (
-                    <th key={taskName} style={{ position: "sticky", top: 0, background: "#FBFBFC" }}>
-                      {taskName}
+                    <th
+                      key={taskName}
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 2,
+                        background: "#FBFBFC",
+                        minWidth: 120,
+                        width: 120,
+                        padding: "10px 10px",
+                        textAlign: "center",
+                        fontSize: 10,
+                        color: "rgba(17,24,39,0.7)",
+                        fontWeight: 900,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <div>{taskName}</div>
+                      <div style={{ marginTop: 2, color: "rgba(17,24,39,0.55)" }}>{filters.phase}</div>
                     </th>
                   ))}
                 </tr>
@@ -1307,10 +1340,13 @@ const scrollCols: Array<{
                         <td
                           key={col.key}
                           style={{
+                            ...S.td,
                             position: "sticky",
-                            left: 0,
-                            background: "#fff",
+                            left: projectStickyLeft,
                             zIndex: 3,
+                            background: "#fff",
+                            minWidth: col.width,
+                            width: col.width,
                             boxShadow: "4px 0 0 rgba(0,0,0,0.03)",
                           }}
                         >
@@ -1319,17 +1355,32 @@ const scrollCols: Array<{
                       ))}
 
                       {scrollCols.map((col) => (
-                        <td key={col.key}>{col.render(row)}</td>
+                        <td
+                          key={col.key}
+                          style={{
+                            ...S.td,
+                            minWidth: col.width,
+                            width: col.width,
+                          }}
+                        >
+                          {col.render(row)}
+                        </td>
                       ))}
 
                       {taskColumns.map((taskName) => {
                         const task = row.tasks[taskName];
-
                         return (
-                          <td key={taskName}>
+                          <td key={`${row.projectId}-${taskName}`} style={{ ...S.td, minWidth: 120, width: 120, textAlign: "center" }}>
                             <button
+                              type="button"
                               onClick={() => openTaskModal(row, taskName, task)}
-                              style={{ background: "transparent", border: "none", cursor: "pointer" }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                padding: 0,
+                                cursor: task?.taskId ? "pointer" : "not-allowed",
+                              }}
+                              title={task?.taskId ? "Editar task" : "Task sem registro para edição"}
                             >
                               <StatusIcon task={task} />
                             </button>
