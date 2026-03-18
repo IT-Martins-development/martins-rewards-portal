@@ -1099,7 +1099,7 @@ const scrollCols = [
 }, [subvendors, subvendorSearch]);
 
   return (
-    <div style={{ background: "#0b1220", minHeight: "100vh", padding: 16 }}>
+    <div style={{ background: "#fff", minHeight: "100vh", padding: 16 }}>
       <div style={S.page}>
         <div style={S.header}>
           <div>
