@@ -2,8 +2,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 
 type AnyObj = Record<string, any>;
-type PhaseKey = "Pre Construction" | "Phase 1" | "Phase 2" | "Phase 3" | "Utilities" | "Supplies";
-type PageSize = 10 | 25 | 50 | 100;
+type PhaseKey =
+  | "Pre Construction"
+  | "Phase 1"
+  | "Phase 2"
+  | "Phase 3"
+  | "Final Phase"
+  | "Utilities"
+  | "Supplies";
+  type PageSize = 10 | 25 | 50 | 100;
 
 type Filters = {
   phase: PhaseKey;
@@ -97,7 +104,15 @@ const SUBVENDORS_API_URL =
 const TASKS_UPDATE_API_URL =
   "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/tasks-update";
 
-const PHASES: PhaseKey[] = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Utilities", "Supplies"];
+const PHASES: PhaseKey[] = [
+  "Pre Construction",
+  "Phase 1",
+  "Phase 2",
+  "Phase 3",
+  "Final Phase",
+  "Utilities",
+  "Supplies",
+];
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
 const COLOR_OPTIONS = ["Verde", "Amarelo", "Laranja", "Vermelho"];
 const CURRENT_PHASE_OPTIONS = ["Pre Construction", "Phase 1", "Phase 2", "Phase 3", "Utilities", "Supplies", "Concluded"];
@@ -240,6 +255,18 @@ const TASK_ORDER: Record<PhaseKey, string[]> = {
     "Order Appliances",
     "Request Bath Service",
   ],
+  "Final Phase": [
+  "Punch List",
+  "Punch List/Out",
+  "Final Survey",
+  "Final Walkthrough",
+  "Client Walkthrough",
+  "Warranty Orientation",
+  "Final Touch-up",
+  "Final Repairs",
+  "Final Approval",
+  "Closeout",
+],
 };
 
 function toStr(v: any) {
@@ -247,7 +274,17 @@ function toStr(v: any) {
   return String(v);
 }
 
+function normalizePhaseName(value: string) {
+  const s = value?.trim().toLowerCase();
 
+  if (s.includes("pre")) return "Pre Construction";
+  if (s.includes("phase 1")) return "Phase 1";
+  if (s.includes("phase 2")) return "Phase 2";
+  if (s.includes("phase 3")) return "Phase 3";
+  if (s.includes("final")) return "Final Phase";
+
+  return value;
+}
 
 function normalizeTaskName(value: any) {
   return toStr(value)
@@ -683,13 +720,12 @@ export default function ProjectTimelineByPhase() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phase: filters.phase,
+          phase: normalizePhaseName(filters.phase),
           operator: filters.operator || undefined,
           project: filters.projectTitle || undefined,
           county: filters.county || undefined,
           projectColor: filters.projectColor || undefined,
-          currentPhase: filters.currentPhase || undefined,
-          phaseStatus: filters.phaseStatus || undefined,
+          currentPhase: normalizePhaseName(filters.currentPhase),          phaseStatus: filters.phaseStatus || undefined,
           showConcluded: filters.showConcluded,
         }),
       });
