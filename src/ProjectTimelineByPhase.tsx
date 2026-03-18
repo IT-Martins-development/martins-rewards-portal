@@ -654,16 +654,17 @@ export default function ProjectTimelineByPhase() {
   });
 
   const S: Record<string, React.CSSProperties> = {
-  page: {
+    page: {
       background: "#fff",
       borderRadius: 12,
-      padding: 18,
+      padding: 14,
       border: "1px solid rgba(0,0,0,0.06)",
       width: "100%",
       maxWidth: "none",
       margin: 0,
       color: "#111827",
-  },
+      boxSizing: "border-box",
+    },
     header: { display: "flex", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" },
     btnPrimary: {
       background: "#7A5A3A",
@@ -1108,7 +1109,7 @@ const scrollCols = [
 }, [subvendors, subvendorSearch]);
 
   return (
-    <div style={{ background: "transparent", minHeight: "100%", padding: 0 }}>
+    <div style={{ background: "transparent", minHeight: "100%", padding: 12 }}>
       <div style={S.page}>
         <div style={S.header}>
           <div>
@@ -1127,7 +1128,15 @@ const scrollCols = [
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr)) 180px", gap: 10, marginBottom: 16 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(8, minmax(120px, 1fr))",
+            gap: 8,
+            marginBottom: 14,
+            alignItems: "end",
+          }}
+        >
           <div>
             <span style={S.label}>Phase</span>
             <select style={S.input} value={filters.phase} onChange={(e) => setFilters((p) => ({ ...p, phase: e.target.value as PhaseKey }))}>
