@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
+export type Lang = "pt" | "en" | "es";
 
 type InvoiceStatus = "Created" | "InPayment" | "Paid";
 type PageSize = 10 | 25 | 50 | 100;
