@@ -12,6 +12,7 @@ import RewardsBalancesReport from "./RewardsBalancesReport";
 import RewardsUser from "./RewardsUser";
 import ProjectControl from "./ProjectControl";
 import ProjectTimelineByPhase from "./ProjectTimelineByPhase";
+import InvoicesManagement from "./InvoicesManagement";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
@@ -569,13 +570,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {page === "balances" && <RewardsBalancesReport lang={langLabel} />}
           {page === "projects" && <ProjectControl />}
           {page === "timeline" && <ProjectTimelineByPhase />}
-
-          {page === "invoices" && (
-            <PlaceholderPage
-              title="Invoices"
-              description="Área reservada para o módulo de invoices."
-            />
-          )}
+          {page === "invoices" && <InvoicesManagement />}
 
           {page === "management-hold" && (
             <PlaceholderPage
