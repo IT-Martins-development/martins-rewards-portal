@@ -44,6 +44,7 @@ type InvoicesApiResponse = {
 };
 const INVOICES_API_URL =
   "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/invoices";
+
 const UPDATE_INVOICE_API_URL =
   "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/invoices-update";
 
@@ -291,7 +292,7 @@ export default function InvoicesManagement() {
 
     try {
       const response = await fetch(INVOICES_API_URL, {
-        method: "POST",
+        method: "GET",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectTitle: filters.projectTitle || undefined,
