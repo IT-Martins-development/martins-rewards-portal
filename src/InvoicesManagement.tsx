@@ -42,11 +42,10 @@ type InvoicesApiResponse = {
   ok: boolean;
   rows: InvoiceRow[];
 };
-
-const GET_INVOICES_API_URL =
-  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/get-invoices";
+const INVOICES_API_URL =
+  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/invoices";
 const UPDATE_INVOICE_API_URL =
-  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/update-invoice";
+  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/invoices-update";
 
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
 const STATUS_OPTIONS: InvoiceStatus[] = ["Created", "InPayment", "Paid"];
@@ -291,7 +290,7 @@ export default function InvoicesManagement() {
     setError("");
 
     try {
-      const response = await fetch(GET_INVOICES_API_URL, {
+      const response = await fetch(INVOICES_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
