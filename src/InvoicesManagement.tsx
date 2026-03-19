@@ -11,6 +11,7 @@ type InvoiceRow = {
   projectTitle: string;
   parcelId: string;
   dueDate: string | null;
+  paymentDate?: string | null;
   amount: number;
   invoiceTitle: string;
   externalTitle: string;
@@ -32,6 +33,7 @@ type InvoiceModalState = {
 
 type InvoiceFormState = {
   dueDate: string;
+  paymentDate: string;
   amount: string;
   invoiceTitle: string;
   externalTitle: string;
@@ -59,30 +61,7 @@ function toStr(v: unknown) {
 }
 
 function normalizeInvoiceId(row: AnyObj): string {
-  return toStr(
-    row?.invoiceId ??
-      row?._id ??
-      row?.raw?.invoiceId ??
-      row?.raw?._id ??
-      ""
-  );
-}
-
-function parseApiRows(data: InvoicesApiResponse | AnyObj): InvoiceRow[] {
-  const rawRows = Array.isArray((data as AnyObj)?.rows) ? (data as AnyObj).rows : [];
-
-  return rawRows.map((row: AnyObj) => ({
-    invoiceId: normalizeInvoiceId(row),
-    projectId: toStr(row?.projectId),
-    projectTitle: toStr(row?.projectTitle),
-    parcelId: toStr(row?.parcelId),
-    dueDate: row?.dueDate ? toStr(row.dueDate) : null,
-    amount: normalizeMoney(row?.amount),
-    invoiceTitle: toStr(row?.invoiceTitle),
-    externalTitle: toStr(row?.externalTitle),
-    status: normalizeStatus(row?.status),
-    raw: row?.raw ?? row,
-  }));
+  return toStr(row?.invoiceId ?? row?._id ?? row?.raw?.invoiceId ?? row?.raw?._id ?? "");
 }
 
 function normalizeStatus(value: unknown): InvoiceStatus {
@@ -96,6 +75,28 @@ function normalizeMoney(value: unknown): number {
   const n = Number(value);
   if (Number.isNaN(n)) return 0;
   return n;
+}
+
+function parseApiRows(data: InvoicesApiResponse | AnyObj): InvoiceRow[] {
+  const rawRows = Array.isArray((data as AnyObj)?.rows) ? (data as AnyObj).rows : [];
+
+  return rawRows.map((row: AnyObj) => {
+    const raw = row?.raw ?? row;
+
+    return {
+      invoiceId: normalizeInvoiceId(row),
+      projectId: toStr(row?.projectId),
+      projectTitle: toStr(row?.projectTitle),
+      parcelId: toStr(row?.parcelId),
+      dueDate: row?.dueDate ? toStr(row.dueDate) : null,
+      paymentDate: raw?.paymentDate ? toStr(raw.paymentDate) : null,
+      amount: normalizeMoney(row?.amount),
+      invoiceTitle: toStr(row?.invoiceTitle),
+      externalTitle: toStr(row?.externalTitle),
+      status: normalizeStatus(row?.status),
+      raw,
+    };
+  });
 }
 
 function formatCurrency(value: number) {
@@ -247,6 +248,7 @@ export default function InvoicesManagement() {
 
   const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>({
     dueDate: "",
+    paymentDate: "",
     amount: "",
     invoiceTitle: "",
     externalTitle: "",
@@ -432,8 +434,17 @@ export default function InvoicesManagement() {
   function openInvoiceModal(row: InvoiceRow) {
     setEditError("");
     setInvoiceModal({ open: true, row });
+
+    const rawPaymentDate =
+      row.raw?.paymentDate ??
+      row.raw?.paidDate ??
+      row.raw?.payment_date ??
+      row.paymentDate ??
+      null;
+
     setInvoiceForm({
       dueDate: normalizeDateForInput(row.dueDate),
+      paymentDate: normalizeDateForInput(rawPaymentDate),
       amount: String(normalizeMoney(row.amount)),
       invoiceTitle: toStr(row.invoiceTitle),
       externalTitle: toStr(row.externalTitle),
@@ -478,6 +489,11 @@ export default function InvoicesManagement() {
         throw new Error("Não foi possível identificar o usuário logado.");
       }
 
+      const paymentDateToSend =
+        invoiceForm.status === "Paid"
+          ? invoiceForm.paymentDate || invoiceForm.dueDate || null
+          : null;
+
       const payload = {
         invoiceId: resolvedInvoiceId,
         _id: resolvedInvoiceId,
@@ -486,6 +502,7 @@ export default function InvoicesManagement() {
         userId,
         status: invoiceForm.status,
         dueDate: invoiceForm.dueDate,
+        paymentDate: paymentDateToSend,
         amount: Number(invoiceForm.amount),
         invoiceTitle: invoiceForm.invoiceTitle,
         externalTitle: invoiceForm.externalTitle,
@@ -520,6 +537,7 @@ export default function InvoicesManagement() {
       "Project Title",
       "Parcel Id",
       "Due Date",
+      "Payment Date",
       "Amount",
       "Invoice Title",
       "External Title",
@@ -539,6 +557,7 @@ export default function InvoicesManagement() {
         row.projectTitle,
         row.parcelId,
         formatDisplayDate(row.dueDate),
+        formatDisplayDate(row.paymentDate || null),
         row.amount,
         row.invoiceTitle,
         row.externalTitle,
@@ -703,7 +722,7 @@ export default function InvoicesManagement() {
                   <th style={{ ...S.th, minWidth: 260 }}>Project Title</th>
                   <th style={{ ...S.th, minWidth: 180 }}>Parcel Id</th>
                   <th style={{ ...S.th, minWidth: 120 }}>Due Date</th>
-                  <th style={{ ...S.th, minWidth: 140 }}>Amount</th>
+                  <th style={{ ...S.th, minWidth: 120 }}>Amount</th>
                   <th style={{ ...S.th, minWidth: 260 }}>Invoice Title</th>
                   <th style={{ ...S.th, minWidth: 220 }}>External Title</th>
                   <th style={{ ...S.th, minWidth: 120 }}>Status</th>
@@ -730,7 +749,7 @@ export default function InvoicesManagement() {
                       <td style={{ ...S.td, minWidth: 260 }}>{row.projectTitle || "-"}</td>
                       <td style={{ ...S.td, minWidth: 180 }}>{row.parcelId || "-"}</td>
                       <td style={{ ...S.td, minWidth: 120 }}>{formatDisplayDate(row.dueDate)}</td>
-                      <td style={{ ...S.td, minWidth: 140 }}>{formatCurrency(row.amount)}</td>
+                      <td style={{ ...S.td, minWidth: 120 }}>{formatCurrency(row.amount)}</td>
                       <td style={{ ...S.td, minWidth: 260 }}>{row.invoiceTitle || "-"}</td>
                       <td style={{ ...S.td, minWidth: 220 }}>{row.externalTitle || "-"}</td>
                       <td style={{ ...S.td, minWidth: 120 }}>
@@ -877,6 +896,23 @@ export default function InvoicesManagement() {
                   </div>
 
                   <div>
+                    <span style={S.label}>Payment Date</span>
+                    <input
+                      type="date"
+                      style={{
+                        ...S.input,
+                        opacity: invoiceForm.status === "Paid" ? 1 : 0.65,
+                        backgroundColor: invoiceForm.status === "Paid" ? "#fff" : "#f3f4f6",
+                      }}
+                      value={invoiceForm.paymentDate}
+                      disabled={invoiceForm.status !== "Paid"}
+                      onChange={(e) =>
+                        setInvoiceForm((prev) => ({ ...prev, paymentDate: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div>
                     <span style={S.label}>Amount</span>
                     <input
                       type="number"
@@ -916,12 +952,20 @@ export default function InvoicesManagement() {
                     <select
                       style={S.input}
                       value={invoiceForm.status}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const nextStatus = e.target.value as InvoiceStatus;
+
                         setInvoiceForm((prev) => ({
                           ...prev,
-                          status: e.target.value as InvoiceStatus,
-                        }))
-                      }
+                          status: nextStatus,
+                          paymentDate:
+                            nextStatus === "Paid"
+                              ? prev.paymentDate ||
+                                prev.dueDate ||
+                                new Date().toISOString().slice(0, 10)
+                              : "",
+                        }));
+                      }}
                     >
                       {STATUS_OPTIONS.map((status) => (
                         <option key={status} value={status}>
