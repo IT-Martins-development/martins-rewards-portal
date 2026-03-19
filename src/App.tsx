@@ -1,885 +1,605 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
-export type Lang = "pt" | "en" | "es";
+import "./index.css";
 
-type InvoiceStatus = "Created" | "InPayment" | "Paid";
-type PageSize = 10 | 25 | 50 | 100;
-type AnyObj = Record<string, any>;
+import { Authenticator } from "@aws-amplify/ui-react";
+import "@aws-amplify/ui-react/styles.css";
 
-type InvoiceRow = {
-  invoiceId: string;
-  projectId: string;
-  projectTitle: string;
-  parcelId: string;
-  dueDate: string | null;
-  amount: number;
-  invoiceTitle: string;
-  externalTitle: string;
-  status: InvoiceStatus;
-  raw: AnyObj;
+import RewardsCRUD from "./RewardsCrud";
+import RewardsApprovals from "./RewardsApprovals";
+import RewardsReport from "./RewardsReport";
+import RewardsBalancesReport from "./RewardsBalancesReport";
+import RewardsUser from "./RewardsUser";
+import ProjectControl from "./ProjectControl";
+import ProjectTimelineByPhase from "./ProjectTimelineByPhase";
+
+import type { Lang } from "./types/lang";
+export type { Lang } from "./types/lang";
+
+type Role = "ADMIN" | "INVESTOR" | "NONE";
+
+type Page =
+  | "home"
+  | "crud"
+  | "approvals"
+  | "report"
+  | "balances"
+  | "projects"
+  | "timeline"
+  | "invoices"
+  | "management-hold"
+  | "future-approvals";
+
+type MenuGroupKey =
+  | "rewards-admin"
+  | "project-management-master"
+  | "finance"
+  | "approvals";
+
+const shell: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "#F6F7F9",
+  color: "#111827",
 };
 
-type Filters = {
-  projectTitle: string;
-  parcelId: string;
-  status: "" | InvoiceStatus;
-  pageSize: PageSize;
+const layout: React.CSSProperties = {
+  display: "grid",
+  gap: 0,
+  minHeight: "100vh",
 };
 
-type InvoiceModalState = {
-  open: boolean;
-  row: InvoiceRow | null;
+const sidebar: React.CSSProperties = {
+  background: "#FFFFFF",
+  borderRight: "1px solid rgba(17,24,39,.08)",
+  boxShadow: "4px 0 24px rgba(15,23,42,.04)",
+  transition: "all 0.25s ease",
 };
 
-type InvoiceFormState = {
-  dueDate: string;
-  amount: string;
-  invoiceTitle: string;
-  externalTitle: string;
-  status: InvoiceStatus;
+const brand: React.CSSProperties = {
+  fontWeight: 900,
+  fontSize: 22,
+  marginBottom: 18,
+  color: "#111827",
 };
 
-type InvoicesApiResponse = {
-  ok: boolean;
-  rows: InvoiceRow[];
+const menuTitle: React.CSSProperties = {
+  color: "#6B7280",
+  fontSize: 11,
+  letterSpacing: 0.8,
+  marginBottom: 10,
+  fontWeight: 900,
 };
 
-const GET_INVOICES_API_URL =
-  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/get-invoices";
-const UPDATE_INVOICE_API_URL =
-  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/update-invoice";
+const groupButtonBase: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  textAlign: "left",
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid rgba(17,24,39,.08)",
+  background: "#F9FAFB",
+  color: "#111827",
+  cursor: "pointer",
+  marginBottom: 8,
+  fontWeight: 800,
+};
 
-const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
-const STATUS_OPTIONS: InvoiceStatus[] = ["Created", "InPayment", "Paid"];
+const groupButtonActive: React.CSSProperties = {
+  ...groupButtonBase,
+  background: "#F3EFE8",
+  border: "1px solid rgba(122,90,58,.22)",
+};
 
-function toStr(v: any) {
-  if (v === null || v === undefined) return "";
-  return String(v);
+const subMenuWrap: React.CSSProperties = {
+  margin: "2px 0 12px 0",
+  paddingLeft: 10,
+};
+
+const subBtnBase: React.CSSProperties = {
+  width: "100%",
+  textAlign: "left",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid transparent",
+  background: "transparent",
+  color: "#374151",
+  cursor: "pointer",
+  marginBottom: 6,
+  fontWeight: 700,
+};
+
+const subBtnActive: React.CSSProperties = {
+  ...subBtnBase,
+  background: "#7A5A3A",
+  color: "#fff",
+  border: "1px solid #7A5A3A",
+};
+
+const contentWrap: React.CSSProperties = {
+  padding: 22,
+  position: "relative",
+  background: "#F6F7F9",
+};
+
+const topbar: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 10,
+  alignItems: "center",
+  marginBottom: 12,
+  flexWrap: "wrap",
+};
+
+const logoutBtn: React.CSSProperties = {
+  border: "0",
+  borderRadius: 999,
+  padding: "9px 16px",
+  background: "#7A5A3A",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const selectLight: React.CSSProperties = {
+  height: 38,
+  borderRadius: 10,
+  border: "1px solid rgba(17,24,39,.12)",
+  background: "#fff",
+  color: "#111827",
+  padding: "0 10px",
+  fontWeight: 800,
+  outline: "none",
+};
+
+const placeholderCard: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid rgba(17,24,39,.08)",
+  borderRadius: 16,
+  padding: 24,
+  color: "#111827",
+  boxShadow: "0 8px 30px rgba(15,23,42,.04)",
+};
+
+function normalizeGroups(groups?: string[]) {
+  return (groups || []).map((g) => String(g).trim().toLowerCase());
 }
 
-function parseApiRows(data: InvoicesApiResponse | AnyObj): InvoiceRow[] {
-  if (Array.isArray((data as any)?.rows)) return (data as any).rows;
-  return [];
+function roleFromGroups(groups?: string[]): Role {
+  const g = normalizeGroups(groups);
+  const isAdmin = g.includes("adminrewards");
+  const isInvestor = g.includes("investor");
+  if (isAdmin) return "ADMIN";
+  if (isInvestor) return "INVESTOR";
+  return "NONE";
 }
 
-function normalizeMoney(value: any): number {
-  const n = Number(value);
-  if (Number.isNaN(n)) return 0;
-  return n;
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(normalizeMoney(value));
-}
-
-function normalizeDateForInput(value?: string | null): string {
-  if (!value) return "";
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-
-  if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
-    const [mm, dd, yyyy] = value.split("-");
-    return `${yyyy}-${mm}-${dd}`;
-  }
-
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function formatDisplayDate(value?: string | null): string {
-  if (!value) return "-";
-
-  if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return value;
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [yyyy, mm, dd] = value.split("-");
-    return `${mm}-${dd}-${yyyy}`;
-  }
-
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return toStr(value);
-
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  return `${mm}-${dd}-${yyyy}`;
-}
-
-async function getLoggedUserId(): Promise<string> {
-  try {
-    const session = await fetchAuthSession();
-    const idTokenSub = session.tokens?.idToken?.payload?.sub;
-    const accessTokenSub = session.tokens?.accessToken?.payload?.sub;
-    return String(idTokenSub || accessTokenSub || "");
-  } catch (e) {
-    console.warn("Unable to get logged user", e);
-    return "";
-  }
-}
-
-function SummaryCard({
+function PlaceholderPage({
   title,
-  value,
-  subtitle,
+  description,
 }: {
   title: string;
-  value: string | number;
-  subtitle: string;
+  description: string;
 }) {
   return (
-    <div
-      style={{
-        background: "linear-gradient(180deg, #ffffff 0%, #faf8f5 100%)",
-        border: "1px solid rgba(122,90,58,0.10)",
-        borderRadius: 18,
-        padding: 18,
-        boxShadow: "0 8px 30px rgba(15,23,42,0.05)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 800,
-          color: "rgba(17,24,39,0.65)",
-          marginBottom: 8,
-        }}
-      >
-        {title}
+    <div style={placeholderCard}>
+      <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>{title}</div>
+      <div style={{ color: "#6B7280", fontSize: 14 }}>{description}</div>
+    </div>
+  );
+}
+
+function HomePage({ onOpen }: { onOpen: (page: Page) => void }) {
+  const quickLinks: Array<{ page: Exclude<Page, "home">; title: string; description: string }> = [
+    {
+      page: "crud",
+      title: "Rewards",
+      description: "Gerencie cadastro, edição e organização dos rewards.",
+    },
+    {
+      page: "approvals",
+      title: "Aprovações",
+      description: "Revise solicitações pendentes e acompanhe decisões.",
+    },
+    {
+      page: "projects",
+      title: "Projetos",
+      description: "Acesse a visão operacional dos projetos em andamento.",
+    },
+    {
+      page: "timeline",
+      title: "Timeline by Phase",
+      description: "Veja a timeline por fase com status das tasks do projeto.",
+    },
+  ];
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div style={placeholderCard}>
+        <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 8 }}>Portal Martins Development</div>
+        <div style={{ color: "#6B7280", fontSize: 14 }}>
+          Escolha um modulo no menu lateral ou use os atalhos abaixo para abrir as areas mais usadas.
+        </div>
       </div>
-      <div
-        style={{
-          fontSize: 28,
-          fontWeight: 900,
-          color: "#111827",
-          lineHeight: 1.1,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          color: "rgba(17,24,39,0.70)",
-        }}
-      >
-        {subtitle}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        {quickLinks.map((item) => (
+          <button
+            key={item.page}
+            type="button"
+            onClick={() => onOpen(item.page)}
+            style={{
+              ...placeholderCard,
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>{item.title}</div>
+            <div style={{ color: "#6B7280", fontSize: 14 }}>{item.description}</div>
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
-export default function InvoicesManagement() {
-  const [rows, setRows] = useState<InvoiceRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [savingInvoice, setSavingInvoice] = useState(false);
-  const [error, setError] = useState("");
-  const [editError, setEditError] = useState("");
-  const [page, setPage] = useState(1);
+function MenuGroup({
+  title,
+  open,
+  active,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  active: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        style={active || open ? groupButtonActive : groupButtonBase}
+        onClick={onToggle}
+      >
+        <span>{collapsed ? title[0] : title}</span>
+        <span style={{ fontSize: 14 }}>{open ? "▾" : "▸"}</span>
+      </button>
+        {open && !collapsed ? <div style={subMenuWrap}>{children}</div> : null}
+    </div>
+  );
+}
 
-  const [filters, setFilters] = useState<Filters>({
-    projectTitle: "",
-    parcelId: "",
-    status: "",
-    pageSize: 25,
-  });
+function AppShell({ signOut }: { signOut?: () => void }) {
+  const [page, setPage] = useState<Page>("home");
+  const [lang, setLang] = useState<Lang>("pt");
+  const [role, setRole] = useState<Role>("NONE");
+  const [checking, setChecking] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
 
-  const [invoiceModal, setInvoiceModal] = useState<InvoiceModalState>({
-    open: false,
-    row: null,
-  });
-
-  const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>({
-    dueDate: "",
-    amount: "",
-    invoiceTitle: "",
-    externalTitle: "",
-    status: "Created",
-  });
-
-  const S: Record<string, React.CSSProperties> = {
-    page: {
-      background: "#fff",
-      borderRadius: 12,
-      padding: 18,
-      border: "1px solid rgba(0,0,0,0.06)",
-      width: "100%",
-      maxWidth: 1800,
-      margin: "0 auto",
-      color: "#111827",
-    },
-    header: {
-      display: "flex",
-      justifyContent: "space-between",
-      marginBottom: 14,
-      gap: 12,
-      flexWrap: "wrap",
-    },
-    btnPrimary: {
-      background: "#7A5A3A",
-      color: "white",
-      border: "none",
-      padding: "10px 14px",
-      borderRadius: 12,
-      fontWeight: 800,
-      cursor: "pointer",
-      height: 42,
-      whiteSpace: "nowrap",
-    },
-    btnGhost: {
-      background: "white",
-      color: "#7A5A3A",
-      border: "1px solid rgba(122,90,58,0.35)",
-      padding: "10px 14px",
-      borderRadius: 12,
-      fontWeight: 800,
-      cursor: "pointer",
-      height: 42,
-      whiteSpace: "nowrap",
-    },
-    input: {
-      width: "100%",
-      height: 42,
-      padding: "0 12px",
-      borderRadius: 12,
-      border: "1px solid rgba(0,0,0,0.14)",
-      outline: "none",
-      color: "#111827",
-      backgroundColor: "#fff",
-      fontSize: 13,
-      boxSizing: "border-box",
-    },
-    label: {
-      fontSize: 11,
-      color: "rgba(17,24,39,0.75)",
-      fontWeight: 800,
-      marginBottom: 4,
-      display: "block",
-    },
-    th: {
-      position: "sticky",
-      top: 0,
-      zIndex: 2,
-      background: "#FBFBFC",
-      padding: "10px 10px",
-      textAlign: "left",
-      fontSize: 10,
-      color: "rgba(17,24,39,0.7)",
-      fontWeight: 900,
-      borderBottom: "1px solid rgba(0,0,0,0.06)",
-      whiteSpace: "nowrap",
-    },
-    td: {
-      padding: "10px 10px",
-      borderBottom: "1px solid rgba(0,0,0,0.06)",
-      fontSize: 12,
-      color: "#111827",
-      verticalAlign: "middle",
-      whiteSpace: "nowrap",
-    },
+  const layoutStyle: React.CSSProperties = {
+    ...layout,
+    gridTemplateColumns: collapsed ? "80px 1fr" : "280px 1fr",
   };
 
-  async function fetchData() {
-    setLoading(true);
-    setError("");
+  const sidebarStyle: React.CSSProperties = {
+    ...sidebar,
+    padding: collapsed ? "18px 10px" : "18px",
+  };
 
-    try {
-      const response = await fetch(GET_INVOICES_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectTitle: filters.projectTitle || undefined,
-          parcelId: filters.parcelId || undefined,
-          status: filters.status || undefined,
-        }),
-      });
+  const [openGroups, setOpenGroups] = useState<Record<MenuGroupKey, boolean>>({
+    "rewards-admin": true,
+    "project-management-master": true,
+    finance: false,
+    approvals: false,
+  });
 
-      const data: InvoicesApiResponse = await response.json();
+  const langLabel = useMemo<Uppercase<Lang>>(() => {
+    const m: Record<Lang, Uppercase<Lang>> = { pt: "PT", en: "EN", es: "ES" };
+    return m[lang];
+  }, [lang]);
 
-      if (!response.ok || data?.ok === false) {
-        throw new Error((data as any)?.message || `Erro ao carregar invoices (${response.status})`);
-      }
+  const pageGroup: Record<Page, MenuGroupKey | null> = {
+    home: null,
+    crud: "rewards-admin",
+    approvals: "rewards-admin",
+    report: "rewards-admin",
+    balances: "rewards-admin",
+    projects: "project-management-master",
+    timeline: "project-management-master",
+    invoices: "finance",
+    "management-hold": "finance",
+    "future-approvals": "approvals",
+  };
 
-      setRows(parseApiRows(data));
-    } catch (e: any) {
-      console.error("Erro ao carregar invoices", e);
-      setError(e?.message || "Erro ao carregar invoices.");
-      setRows([]);
-    } finally {
-      setLoading(false);
+  function toggleGroup(group: MenuGroupKey) {
+    setOpenGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+  }
+
+  function openPage(nextPage: Page) {
+    setPage(nextPage);
+    const group = pageGroup[nextPage];
+    if (group) {
+      setOpenGroups((prev) => ({ ...prev, [group]: true }));
     }
   }
 
   useEffect(() => {
-    fetchData();
-  }, [filters.projectTitle, filters.parcelId, filters.status]);
+    let cancelled = false;
 
-  useEffect(() => {
-    setPage(1);
-  }, [filters]);
-
-  const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      if (
-        filters.projectTitle &&
-        !toStr(row.projectTitle).toLowerCase().includes(filters.projectTitle.toLowerCase())
-      ) {
-        return false;
+    async function checkAccess() {
+      setChecking(true);
+      try {
+        const session = await fetchAuthSession();
+        const groups =
+          (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) || [];
+        const r = roleFromGroups(groups);
+        if (!cancelled) setRole(r);
+      } catch {
+        if (!cancelled) setRole("NONE");
+      } finally {
+        if (!cancelled) setChecking(false);
       }
+    }
 
-      if (
-        filters.parcelId &&
-        !toStr(row.parcelId).toLowerCase().includes(filters.parcelId.toLowerCase())
-      ) {
-        return false;
-      }
-
-      if (filters.status && row.status !== filters.status) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [rows, filters]);
-
-  const metrics = useMemo(() => {
-    let created = 0;
-    let inPayment = 0;
-    let paid = 0;
-    let totalAmount = 0;
-
-    filteredRows.forEach((row) => {
-      totalAmount += normalizeMoney(row.amount);
-      if (row.status === "Created") created += 1;
-      if (row.status === "InPayment") inPayment += 1;
-      if (row.status === "Paid") paid += 1;
-    });
-
-    return {
-      created,
-      inPayment,
-      paid,
-      totalAmount: formatCurrency(totalAmount),
+    checkAccess();
+    return () => {
+      cancelled = true;
     };
-  }, [filteredRows]);
+  }, []);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / filters.pageSize));
-
-  const pagedRows = useMemo(() => {
-    return filteredRows.slice((page - 1) * filters.pageSize, page * filters.pageSize);
-  }, [filteredRows, page, filters.pageSize]);
-
-  function openInvoiceModal(row: InvoiceRow) {
-    setEditError("");
-    setInvoiceModal({ open: true, row });
-    setInvoiceForm({
-      dueDate: normalizeDateForInput(row.dueDate),
-      amount: String(normalizeMoney(row.amount)),
-      invoiceTitle: toStr(row.invoiceTitle),
-      externalTitle: toStr(row.externalTitle),
-      status: row.status,
-    });
-  }
-
-  function closeInvoiceModal() {
-    setInvoiceModal({ open: false, row: null });
-    setEditError("");
-  }
-
-  async function saveInvoice() {
-    if (!invoiceModal.row?.invoiceId) {
-      setEditError("Invoice inválida para edição.");
-      return;
-    }
-
-    if (!invoiceForm.dueDate) {
-      setEditError("Due Date é obrigatório.");
-      return;
-    }
-
-    if (invoiceForm.amount === "" || Number.isNaN(Number(invoiceForm.amount))) {
-      setEditError("Amount inválido.");
-      return;
-    }
-
-    try {
-      setSavingInvoice(true);
-      setEditError("");
-
-      const userId = await getLoggedUserId();
-      if (!userId) {
-        throw new Error("Não foi possível identificar o usuário logado.");
-      }
-
-      const response = await fetch(UPDATE_INVOICE_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceId: invoiceModal.row.invoiceId,
-          projectId: invoiceModal.row.projectId,
-          userId,
-          status: invoiceForm.status,
-          dueDate: invoiceForm.dueDate,
-          amount: Number(invoiceForm.amount),
-          invoiceTitle: invoiceForm.invoiceTitle,
-          externalTitle: invoiceForm.externalTitle,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || data?.ok === false) {
-        throw new Error(data?.message || `Erro ao salvar invoice (${response.status})`);
-      }
-
-      closeInvoiceModal();
-      await fetchData();
-    } catch (e: any) {
-      console.error("Erro ao salvar invoice", e);
-      setEditError(e?.message || "Erro ao salvar invoice.");
-    } finally {
-      setSavingInvoice(false);
-    }
-  }
-
-  function exportCurrentViewCsv() {
-    const headers = [
-      "Project Title",
-      "Parcel Id",
-      "Due Date",
-      "Amount",
-      "Invoice Title",
-      "External Title",
-      "Status",
-    ];
-
-    const csvEscape = (value: unknown) => {
-      const text = String(value ?? "");
-      if (/[",\n]/.test(text)) {
-        return `"${text.replace(/"/g, '""')}"`;
-      }
-      return text;
-    };
-
-    const lines = filteredRows.map((row) =>
-      [
-        row.projectTitle,
-        row.parcelId,
-        formatDisplayDate(row.dueDate),
-        row.amount,
-        row.invoiceTitle,
-        row.externalTitle,
-        row.status,
-      ]
-        .map(csvEscape)
-        .join(",")
+  if (checking) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", color: "#111827", fontWeight: 800 }}>
+          Carregando…
+        </div>
+      </div>
     );
+  }
 
-    const csv = [headers.map(csvEscape).join(","), ...lines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "invoices_management.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  if (role === "INVESTOR") {
+    return (
+      <div style={{ minHeight: "100vh", background: "#F6F7F9" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: 14,
+            maxWidth: 1200,
+            margin: "0 auto",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontWeight: 900, color: "#111827" }}>Martins Development</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value as Lang)}
+              style={selectLight}
+              aria-label="Language"
+            >
+              <option value="pt">PT</option>
+              <option value="en">EN</option>
+              <option value="es">ES</option>
+            </select>
+            <button style={logoutBtn} onClick={() => signOut?.()}>
+              Sair
+            </button>
+          </div>
+        </div>
+        <RewardsUser lang={langLabel} />
+      </div>
+    );
+  }
+
+  if (role === "NONE") {
+    return (
+      <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
+        <div
+          style={{
+            maxWidth: 900,
+            margin: "0 auto",
+            background: "white",
+            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: 12,
+            padding: 18,
+            color: "#111827",
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Acesso negado</div>
+          <div style={{ opacity: 0.75, marginBottom: 14 }}>
+            Seu usuário não tem permissão de acesso.
+          </div>
+          <button style={logoutBtn} onClick={() => signOut?.()}>
+            Sair
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div style={{ background: "#f8fafc", minHeight: "100vh", padding: 16 }}>
-      <div style={S.page}>
-        <div style={S.header}>
-          <div>
-            <div style={{ fontSize: 28, fontWeight: 900 }}>Invoices Management</div>
-            <div style={{ marginTop: 6, color: "rgba(17,24,39,0.60)", fontSize: 13 }}>
-              Gestão de invoices com edição direta e histórico de alterações.
-            </div>
-          </div>
+    <div style={shell}>
+      <div style={layoutStyle}>
+        <aside style={sidebarStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {!collapsed && <div style={brand}>• Martins Development</div>}
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button style={S.btnGhost} onClick={exportCurrentViewCsv}>
-              Exportar CSV
-            </button>
-            <button style={S.btnPrimary} onClick={fetchData}>
-              Atualizar
-            </button>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.4fr 1fr 1fr 180px",
-            gap: 10,
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <span style={S.label}>Project Title</span>
-            <input
-              style={S.input}
-              placeholder="Buscar projeto"
-              value={filters.projectTitle}
-              onChange={(e) => setFilters((p) => ({ ...p, projectTitle: e.target.value }))}
-            />
-          </div>
-
-          <div>
-            <span style={S.label}>Parcel Id</span>
-            <input
-              style={S.input}
-              placeholder="Buscar parcel"
-              value={filters.parcelId}
-              onChange={(e) => setFilters((p) => ({ ...p, parcelId: e.target.value }))}
-            />
-          </div>
-
-          <div>
-            <span style={S.label}>Status</span>
-            <select
-              style={S.input}
-              value={filters.status}
-              onChange={(e) =>
-                setFilters((p) => ({ ...p, status: e.target.value as Filters["status"] }))
-              }
-            >
-              <option value="">Todos</option>
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <span style={S.label}>Itens por página</span>
-            <select
-              style={S.input}
-              value={filters.pageSize}
-              onChange={(e) =>
-                setFilters((p) => ({ ...p, pageSize: Number(e.target.value) as PageSize }))
-              }
-            >
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, minmax(0,1fr))",
-            gap: 12,
-            marginBottom: 18,
-          }}
-        >
-          <SummaryCard
-            title="Invoices filtradas"
-            value={filteredRows.length}
-            subtitle="Base da visão atual"
-          />
-          <SummaryCard
-            title="Created"
-            value={metrics.created}
-            subtitle="Invoices criadas"
-          />
-          <SummaryCard
-            title="InPayment"
-            value={metrics.inPayment}
-            subtitle="Invoices em pagamento"
-          />
-          <SummaryCard
-            title="Paid"
-            value={metrics.paid}
-            subtitle="Invoices pagas"
-          />
-          <SummaryCard
-            title="Valor total"
-            value={metrics.totalAmount}
-            subtitle="Soma dos filtros atuais"
-          />
-        </div>
-
-        {error ? (
-          <div style={{ marginBottom: 12, color: "#b91c1c", fontWeight: 800 }}>{error}</div>
-        ) : null}
-
-        <div
-          style={{
-            background: "white",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.08)",
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "72vh", position: "relative" }}>
-            <table
+            <button
+              onClick={() => setCollapsed(!collapsed)}
               style={{
-                borderCollapse: "separate",
-                borderSpacing: 0,
-                minWidth: 1400,
-                width: "100%",
+                border: "none",
+                background: "#F3EFE8",
+                borderRadius: 8,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontWeight: 900,
               }}
             >
-              <thead>
-                <tr>
-                  <th style={{ ...S.th, minWidth: 260 }}>Project Title</th>
-                  <th style={{ ...S.th, minWidth: 180 }}>Parcel Id</th>
-                  <th style={{ ...S.th, minWidth: 120 }}>Due Date</th>
-                  <th style={{ ...S.th, minWidth: 140 }}>Amount</th>
-                  <th style={{ ...S.th, minWidth: 260 }}>Invoice Title</th>
-                  <th style={{ ...S.th, minWidth: 220 }}>External Title</th>
-                  <th style={{ ...S.th, minWidth: 120 }}>Status</th>
-                  <th style={{ ...S.th, minWidth: 100, textAlign: "center" }}>Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} style={{ padding: 24, textAlign: "center" }}>
-                      Carregando...
-                    </td>
-                  </tr>
-                ) : pagedRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ padding: 24, textAlign: "center" }}>
-                      Nenhum resultado encontrado.
-                    </td>
-                  </tr>
-                ) : (
-                  pagedRows.map((row) => (
-                    <tr key={row.invoiceId}>
-                      <td style={{ ...S.td, minWidth: 260 }}>{row.projectTitle || "-"}</td>
-                      <td style={{ ...S.td, minWidth: 180 }}>{row.parcelId || "-"}</td>
-                      <td style={{ ...S.td, minWidth: 120 }}>{formatDisplayDate(row.dueDate)}</td>
-                      <td style={{ ...S.td, minWidth: 140 }}>{formatCurrency(row.amount)}</td>
-                      <td style={{ ...S.td, minWidth: 260 }}>{row.invoiceTitle || "-"}</td>
-                      <td style={{ ...S.td, minWidth: 220 }}>{row.externalTitle || "-"}</td>
-                      <td style={{ ...S.td, minWidth: 120 }}>
-                        <span
-                          style={{
-                            fontWeight: 800,
-                            color:
-                              row.status === "Paid"
-                                ? "#16a34a"
-                                : row.status === "InPayment"
-                                ? "#2563eb"
-                                : "#7a5a3a",
-                          }}
-                        >
-                          {row.status}
-                        </span>
-                      </td>
-                      <td style={{ ...S.td, minWidth: 100, textAlign: "center" }}>
-                        <button
-                          style={S.btnGhost}
-                          onClick={() => openInvoiceModal(row)}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+              {collapsed ? "☰" : "⟨"}
+            </button>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: 8,
-              padding: 12,
-              borderTop: "1px solid rgba(0,0,0,0.06)",
-            }}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+            <div style={{ color: "#6B7280", fontSize: 12, fontWeight: 900, letterSpacing: 0.6 }}>
+              LANG
+            </div>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value as Lang)}
+              style={selectLight}
+            >
+              <option value="pt">PT</option>
+              <option value="en">EN</option>
+              <option value="es">ES</option>
+            </select>
+          </div>
+
+          <div style={menuTitle}>MENU</div>
+
+          <MenuGroup
+            title="Modulo Rewards ADMIN"
+            open={openGroups["rewards-admin"]}
+            active={pageGroup[page] === "rewards-admin"}
+            collapsed={collapsed}
+            onToggle={() => toggleGroup("rewards-admin")}
           >
             <button
-              style={S.btnGhost}
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              style={page === "crud" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("crud")}
             >
-              ◀ Anterior
+              Rewards (CRUD)
             </button>
-            <div style={{ fontSize: 12, fontWeight: 800 }}>
-              Página {page} de {totalPages}
-            </div>
             <button
-              style={S.btnGhost}
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              style={page === "approvals" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("approvals")}
             >
-              Próxima ▶
+              Aprovações
+            </button>
+            <button
+              style={page === "report" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("report")}
+            >
+              Relatório
+            </button>
+            <button
+              style={page === "balances" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("balances")}
+            >
+              Saldos
+            </button>
+          </MenuGroup>
+
+          <MenuGroup
+            title="Project Management Master"
+            open={openGroups["project-management-master"]}
+            active={pageGroup[page] === "project-management-master"}
+            collapsed={collapsed}
+            onToggle={() => toggleGroup("project-management-master")}
+          >
+            <button
+              style={page === "projects" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("projects")}
+            >
+              Projetos
+            </button>
+            <button
+              style={page === "timeline" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("timeline")}
+            >
+              Timeline by Phase
+            </button>
+          </MenuGroup>
+
+          <MenuGroup
+            title="Finance"
+            open={openGroups.finance}
+            active={pageGroup[page] === "finance"}
+            collapsed={collapsed}
+            onToggle={() => toggleGroup("finance")}
+          >
+            <button
+              style={page === "invoices" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("invoices")}
+            >
+              Invoices
+            </button>
+            <button
+              style={page === "management-hold" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("management-hold")}
+            >
+              Management Hold
+            </button>
+          </MenuGroup>
+
+          <MenuGroup
+            title="Approvals"
+            open={openGroups.approvals}
+            active={pageGroup[page] === "approvals"}
+            collapsed={collapsed}
+            onToggle={() => toggleGroup("approvals")}
+          >
+            <button
+              style={page === "future-approvals" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("future-approvals")}
+            >
+              Aprovações Futuras
+            </button>
+          </MenuGroup>
+        </aside>
+
+        <main style={contentWrap}>
+          <div style={topbar}>
+            <button style={logoutBtn} onClick={() => signOut?.()}>
+              Sair
             </button>
           </div>
-        </div>
+
+          {page === "home" && <HomePage onOpen={openPage} />}
+          {page === "crud" && <RewardsCRUD lang={lang} />}
+          {page === "approvals" && <RewardsApprovals lang={lang} />}
+          {page === "report" && <RewardsReport lang={langLabel} />}
+          {page === "balances" && <RewardsBalancesReport lang={langLabel} />}
+          {page === "projects" && <ProjectControl />}
+          {page === "timeline" && <ProjectTimelineByPhase />}
+
+          {page === "invoices" && (
+            <PlaceholderPage
+              title="Invoices"
+              description="Área reservada para o módulo de invoices."
+            />
+          )}
+
+          {page === "management-hold" && (
+            <PlaceholderPage
+              title="Management Hold"
+              description="Área reservada para o módulo de management hold."
+            />
+          )}
+
+          {page === "future-approvals" && (
+            <PlaceholderPage
+              title="Approvals"
+              description="Área reservada para futuros módulos de aprovação."
+            />
+          )}
+        </main>
       </div>
-
-      {invoiceModal.open && invoiceModal.row ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.45)",
-            display: "grid",
-            placeItems: "center",
-            zIndex: 50,
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 980,
-              background: "#fff",
-              borderRadius: 18,
-              boxShadow: "0 30px 80px rgba(0,0,0,0.24)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: 18,
-                borderBottom: "1px solid rgba(0,0,0,0.08)",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>Edit invoice</div>
-                <div style={{ marginTop: 6, fontSize: 12, color: "rgba(17,24,39,0.60)" }}>
-                  {invoiceModal.row.projectTitle} • {invoiceModal.row.externalTitle}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button style={S.btnGhost} onClick={closeInvoiceModal}>
-                  Cancelar
-                </button>
-                <button style={S.btnPrimary} onClick={saveInvoice} disabled={savingInvoice}>
-                  {savingInvoice ? "Salvando..." : "Save"}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ padding: 18, display: "grid", gap: 18 }}>
-              {editError ? (
-                <div style={{ color: "#b91c1c", fontWeight: 800 }}>{editError}</div>
-              ) : null}
-
-              <div>
-                <div style={{ fontWeight: 900, marginBottom: 10 }}>About the invoice</div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <span style={S.label}>Project Title</span>
-                    <input style={S.input} value={invoiceModal.row.projectTitle} readOnly />
-                  </div>
-
-                  <div>
-                    <span style={S.label}>Parcel Id</span>
-                    <input style={S.input} value={invoiceModal.row.parcelId || ""} readOnly />
-                  </div>
-
-                  <div>
-                    <span style={S.label}>Due Date</span>
-                    <input
-                      type="date"
-                      style={S.input}
-                      value={invoiceForm.dueDate}
-                      onChange={(e) =>
-                        setInvoiceForm((prev) => ({ ...prev, dueDate: e.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <span style={S.label}>Amount</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      style={S.input}
-                      value={invoiceForm.amount}
-                      onChange={(e) =>
-                        setInvoiceForm((prev) => ({ ...prev, amount: e.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <span style={S.label}>Invoice Title</span>
-                    <input
-                      style={S.input}
-                      value={invoiceForm.invoiceTitle}
-                      onChange={(e) =>
-                        setInvoiceForm((prev) => ({ ...prev, invoiceTitle: e.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <span style={S.label}>External Title</span>
-                    <input
-                      style={S.input}
-                      value={invoiceForm.externalTitle}
-                      onChange={(e) =>
-                        setInvoiceForm((prev) => ({ ...prev, externalTitle: e.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <span style={S.label}>Status</span>
-                    <select
-                      style={S.input}
-                      value={invoiceForm.status}
-                      onChange={(e) =>
-                        setInvoiceForm((prev) => ({
-                          ...prev,
-                          status: e.target.value as InvoiceStatus,
-                        }))
-                      }
-                    >
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <span style={S.label}>Invoice ID</span>
-                    <input style={S.input} value={invoiceModal.row.invoiceId} readOnly />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Authenticator>
+      {({ signOut }) => <AppShell signOut={signOut} />}
+    </Authenticator>
   );
 }
