@@ -286,36 +286,37 @@ export default function InvoicesManagement() {
     },
   };
 
-  async function fetchData() {
-    setLoading(true);
-    setError("");
+async function fetchData() {
+  setLoading(true);
+  setError("");
 
-    try {
-      const response = await fetch(INVOICES_API_URL, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectTitle: filters.projectTitle || undefined,
-          parcelId: filters.parcelId || undefined,
-          status: filters.status || undefined,
-        }),
-      });
+  try {
+    const params = new URLSearchParams();
 
-      const data: InvoicesApiResponse = await response.json();
+    if (filters.projectTitle) params.append("projectTitle", filters.projectTitle);
+    if (filters.parcelId) params.append("parcelId", filters.parcelId);
+    if (filters.status) params.append("status", filters.status);
 
-      if (!response.ok || data?.ok === false) {
-        throw new Error((data as any)?.message || `Erro ao carregar invoices (${response.status})`);
-      }
+    const response = await fetch(`${INVOICES_API_URL}?${params.toString()}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
 
-      setRows(parseApiRows(data));
-    } catch (e: any) {
-      console.error("Erro ao carregar invoices", e);
-      setError(e?.message || "Erro ao carregar invoices.");
-      setRows([]);
-    } finally {
-      setLoading(false);
+    const data: InvoicesApiResponse = await response.json();
+
+    if (!response.ok || data?.ok === false) {
+      throw new Error((data as any)?.message || `Erro ao carregar invoices (${response.status})`);
     }
+
+    setRows(parseApiRows(data));
+  } catch (e: any) {
+    console.error("Erro ao carregar invoices", e);
+    setError(e?.message || "Erro ao carregar invoices.");
+    setRows([]);
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     fetchData();
