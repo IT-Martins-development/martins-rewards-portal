@@ -434,11 +434,19 @@ async function fetchData() {
         }),
       });
 
-      const data = await response.json();
+          const text = await response.text();
 
-      if (!response.ok || data?.ok === false) {
-        throw new Error(data?.message || `Erro ao salvar invoice (${response.status})`);
-      }
+          let data: any = {};
+
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch {
+            data = { raw: text };
+          }
+
+          if (!response.ok || data?.ok === false) {
+            throw new Error(data?.message || `Erro ao salvar invoice (${response.status})`);
+          }
 
       closeInvoiceModal();
       await fetchData();
