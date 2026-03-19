@@ -302,7 +302,14 @@ async function fetchData() {
       headers: { "Content-Type": "application/json" },
     });
 
-    const data: InvoicesApiResponse = await response.json();
+    const rawText = await response.text();
+
+    let data: InvoicesApiResponse | any = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      data = { ok: false, message: rawText || "Resposta inválida da API." };
+    }
 
     if (!response.ok || data?.ok === false) {
       throw new Error((data as any)?.message || `Erro ao carregar invoices (${response.status})`);
@@ -394,69 +401,70 @@ async function fetchData() {
     setEditError("");
   }
 
-  async function saveInvoice() {
-    if (!invoiceModal.row?.invoiceId) {
-      setEditError("Invoice inválida para edição.");
-      return;
-    }
-
-    if (!invoiceForm.dueDate) {
-      setEditError("Due Date é obrigatório.");
-      return;
-    }
-
-    if (invoiceForm.amount === "" || Number.isNaN(Number(invoiceForm.amount))) {
-      setEditError("Amount inválido.");
-      return;
-    }
-
-    try {
-      setSavingInvoice(true);
-      setEditError("");
-
-      const userId = await getLoggedUserId();
-      if (!userId) {
-        throw new Error("Não foi possível identificar o usuário logado.");
-      }
-
-      const response = await fetch(UPDATE_INVOICE_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceId: invoiceModal.row.invoiceId,
-          projectId: invoiceModal.row.projectId,
-          userId,
-          status: invoiceForm.status,
-          dueDate: invoiceForm.dueDate,
-          amount: Number(invoiceForm.amount),
-          invoiceTitle: invoiceForm.invoiceTitle,
-          externalTitle: invoiceForm.externalTitle,
-        }),
-      });
-
-          const text = await response.text();
-
-          let data: any = {};
-
-          try {
-            data = text ? JSON.parse(text) : {};
-          } catch {
-            data = { raw: text };
-          }
-
-          if (!response.ok || data?.ok === false) {
-            throw new Error(data?.message || `Erro ao salvar invoice (${response.status})`);
-          }
-
-      closeInvoiceModal();
-      await fetchData();
-    } catch (e: any) {
-      console.error("Erro ao salvar invoice", e);
-      setEditError(e?.message || "Erro ao salvar invoice.");
-    } finally {
-      setSavingInvoice(false);
-    }
+async function saveInvoice() {
+  if (!invoiceModal.row?.invoiceId) {
+    setEditError("Invoice inválida para edição.");
+    return;
   }
+
+  if (!invoiceForm.dueDate) {
+    setEditError("Due Date é obrigatório.");
+    return;
+  }
+
+  if (invoiceForm.amount === "" || Number.isNaN(Number(invoiceForm.amount))) {
+    setEditError("Amount inválido.");
+    return;
+  }
+
+  try {
+    setSavingInvoice(true);
+    setEditError("");
+
+    const userId = await getLoggedUserId();
+    if (!userId) {
+      throw new Error("Não foi possível identificar o usuário logado.");
+    }
+
+    const response = await fetch(UPDATE_INVOICE_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        invoiceId: invoiceModal.row.invoiceId,
+        projectId: invoiceModal.row.projectId,
+        userId,
+        status: invoiceForm.status,
+        dueDate: invoiceForm.dueDate,
+        amount: Number(invoiceForm.amount),
+        invoiceTitle: invoiceForm.invoiceTitle,
+        externalTitle: invoiceForm.externalTitle,
+      }),
+    });
+
+    const rawText = await response.text();
+
+    let data: any = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      data = { rawText };
+    }
+
+    if (!response.ok || data?.ok === false) {
+      throw new Error(
+        data?.message || data?.rawText || `Erro ao salvar invoice (${response.status})`
+      );
+    }
+
+    closeInvoiceModal();
+    await fetchData();
+  } catch (e: any) {
+    console.error("Erro ao salvar invoice", e);
+    setEditError(e?.message || "Erro ao salvar invoice.");
+  } finally {
+    setSavingInvoice(false);
+  }
+}
 
   function exportCurrentViewCsv() {
     const headers = [
