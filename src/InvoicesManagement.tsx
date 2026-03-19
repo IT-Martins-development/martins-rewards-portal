@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 
 type InvoiceStatus = "Created" | "InPayment" | "Paid";
@@ -39,9 +39,11 @@ type InvoiceFormState = {
 };
 
 type InvoicesApiResponse = {
-  ok: boolean;
-  rows: InvoiceRow[];
+  ok?: boolean;
+  rows?: InvoiceRow[];
+  message?: string;
 };
+
 const INVOICES_API_URL =
   "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/invoices";
 
@@ -51,17 +53,46 @@ const UPDATE_INVOICE_API_URL =
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
 const STATUS_OPTIONS: InvoiceStatus[] = ["Created", "InPayment", "Paid"];
 
-function toStr(v: any) {
+function toStr(v: unknown) {
   if (v === null || v === undefined) return "";
   return String(v);
 }
 
-function parseApiRows(data: InvoicesApiResponse | AnyObj): InvoiceRow[] {
-  if (Array.isArray((data as any)?.rows)) return (data as any).rows;
-  return [];
+function normalizeInvoiceId(row: AnyObj): string {
+  return toStr(
+    row?.invoiceId ??
+      row?._id ??
+      row?.raw?.invoiceId ??
+      row?.raw?._id ??
+      ""
+  );
 }
 
-function normalizeMoney(value: any): number {
+function parseApiRows(data: InvoicesApiResponse | AnyObj): InvoiceRow[] {
+  const rawRows = Array.isArray((data as AnyObj)?.rows) ? (data as AnyObj).rows : [];
+
+  return rawRows.map((row: AnyObj) => ({
+    invoiceId: normalizeInvoiceId(row),
+    projectId: toStr(row?.projectId),
+    projectTitle: toStr(row?.projectTitle),
+    parcelId: toStr(row?.parcelId),
+    dueDate: row?.dueDate ? toStr(row.dueDate) : null,
+    amount: normalizeMoney(row?.amount),
+    invoiceTitle: toStr(row?.invoiceTitle),
+    externalTitle: toStr(row?.externalTitle),
+    status: normalizeStatus(row?.status),
+    raw: row?.raw ?? row,
+  }));
+}
+
+function normalizeStatus(value: unknown): InvoiceStatus {
+  if (value === "Created" || value === "InPayment" || value === "Paid") {
+    return value;
+  }
+  return "Created";
+}
+
+function normalizeMoney(value: unknown): number {
   const n = Number(value);
   if (Number.isNaN(n)) return 0;
   return n;
@@ -121,6 +152,24 @@ async function getLoggedUserId(): Promise<string> {
   } catch (e) {
     console.warn("Unable to get logged user", e);
     return "";
+  }
+}
+
+async function parseApiResponse(response: Response) {
+  const rawText = await response.text();
+
+  if (!rawText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return {
+      ok: false,
+      message: rawText || "Resposta inválida da API.",
+      rawText,
+    };
   }
 }
 
@@ -286,52 +335,48 @@ export default function InvoicesManagement() {
     },
   };
 
-async function fetchData() {
-  setLoading(true);
-  setError("");
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-  try {
-    const params = new URLSearchParams();
-
-    if (filters.projectTitle) params.append("projectTitle", filters.projectTitle);
-    if (filters.parcelId) params.append("parcelId", filters.parcelId);
-    if (filters.status) params.append("status", filters.status);
-
-    const response = await fetch(`${INVOICES_API_URL}?${params.toString()}`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const rawText = await response.text();
-
-    let data: InvoicesApiResponse | any = {};
     try {
-      data = rawText ? JSON.parse(rawText) : {};
-    } catch {
-      data = { ok: false, message: rawText || "Resposta inválida da API." };
+      const params = new URLSearchParams();
+
+      if (filters.projectTitle) params.append("projectTitle", filters.projectTitle);
+      if (filters.parcelId) params.append("parcelId", filters.parcelId);
+      if (filters.status) params.append("status", filters.status);
+
+      const query = params.toString();
+      const url = query ? `${INVOICES_API_URL}?${query}` : INVOICES_API_URL;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await parseApiResponse(response);
+
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.message || `Erro ao carregar invoices (${response.status})`);
+      }
+
+      setRows(parseApiRows(data));
+    } catch (e: any) {
+      console.error("Erro ao carregar invoices", e);
+      setError(e?.message || "Erro ao carregar invoices.");
+      setRows([]);
+    } finally {
+      setLoading(false);
     }
-
-    if (!response.ok || data?.ok === false) {
-      throw new Error((data as any)?.message || `Erro ao carregar invoices (${response.status})`);
-    }
-
-    setRows(parseApiRows(data));
-  } catch (e: any) {
-    console.error("Erro ao carregar invoices", e);
-    setError(e?.message || "Erro ao carregar invoices.");
-    setRows([]);
-  } finally {
-    setLoading(false);
-  }
-}
-
-  useEffect(() => {
-    fetchData();
   }, [filters.projectTitle, filters.parcelId, filters.status]);
 
   useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
     setPage(1);
-  }, [filters]);
+  }, [filters.projectTitle, filters.parcelId, filters.status, filters.pageSize]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -355,7 +400,7 @@ async function fetchData() {
 
       return true;
     });
-  }, [rows, filters]);
+  }, [rows, filters.projectTitle, filters.parcelId, filters.status]);
 
   const metrics = useMemo(() => {
     let created = 0;
@@ -401,36 +446,42 @@ async function fetchData() {
     setEditError("");
   }
 
-async function saveInvoice() {
-  if (!invoiceModal.row?.invoiceId) {
-    setEditError("Invoice inválida para edição.");
-    return;
-  }
-
-  if (!invoiceForm.dueDate) {
-    setEditError("Due Date é obrigatório.");
-    return;
-  }
-
-  if (invoiceForm.amount === "" || Number.isNaN(Number(invoiceForm.amount))) {
-    setEditError("Amount inválido.");
-    return;
-  }
-
-  try {
-    setSavingInvoice(true);
-    setEditError("");
-
-    const userId = await getLoggedUserId();
-    if (!userId) {
-      throw new Error("Não foi possível identificar o usuário logado.");
+  async function saveInvoice() {
+    if (!invoiceModal.row) {
+      setEditError("Invoice inválida para edição.");
+      return;
     }
 
-    const response = await fetch(UPDATE_INVOICE_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        invoiceId: invoiceModal.row.invoiceId,
+    const resolvedInvoiceId = normalizeInvoiceId(invoiceModal.row);
+
+    if (!resolvedInvoiceId) {
+      setEditError("Invoice ID não encontrado.");
+      return;
+    }
+
+    if (!invoiceForm.dueDate) {
+      setEditError("Due Date é obrigatório.");
+      return;
+    }
+
+    if (invoiceForm.amount === "" || Number.isNaN(Number(invoiceForm.amount))) {
+      setEditError("Amount inválido.");
+      return;
+    }
+
+    try {
+      setSavingInvoice(true);
+      setEditError("");
+
+      const userId = await getLoggedUserId();
+      if (!userId) {
+        throw new Error("Não foi possível identificar o usuário logado.");
+      }
+
+      const payload = {
+        invoiceId: resolvedInvoiceId,
+        _id: resolvedInvoiceId,
+        mongoId: resolvedInvoiceId,
         projectId: invoiceModal.row.projectId,
         userId,
         status: invoiceForm.status,
@@ -438,33 +489,31 @@ async function saveInvoice() {
         amount: Number(invoiceForm.amount),
         invoiceTitle: invoiceForm.invoiceTitle,
         externalTitle: invoiceForm.externalTitle,
-      }),
-    });
+      };
 
-    const rawText = await response.text();
+      const response = await fetch(UPDATE_INVOICE_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    let data: any = {};
-    try {
-      data = rawText ? JSON.parse(rawText) : {};
-    } catch {
-      data = { rawText };
+      const data = await parseApiResponse(response);
+
+      if (!response.ok || data?.ok === false) {
+        throw new Error(
+          data?.message || data?.rawText || `Erro ao salvar invoice (${response.status})`
+        );
+      }
+
+      closeInvoiceModal();
+      await fetchData();
+    } catch (e: any) {
+      console.error("Erro ao salvar invoice", e);
+      setEditError(e?.message || "Erro ao salvar invoice.");
+    } finally {
+      setSavingInvoice(false);
     }
-
-    if (!response.ok || data?.ok === false) {
-      throw new Error(
-        data?.message || data?.rawText || `Erro ao salvar invoice (${response.status})`
-      );
-    }
-
-    closeInvoiceModal();
-    await fetchData();
-  } catch (e: any) {
-    console.error("Erro ao salvar invoice", e);
-    setEditError(e?.message || "Erro ao salvar invoice.");
-  } finally {
-    setSavingInvoice(false);
   }
-}
 
   function exportCurrentViewCsv() {
     const headers = [
@@ -524,8 +573,8 @@ async function saveInvoice() {
             <button style={S.btnGhost} onClick={exportCurrentViewCsv}>
               Exportar CSV
             </button>
-            <button style={S.btnPrimary} onClick={fetchData}>
-              Atualizar
+            <button style={S.btnPrimary} onClick={fetchData} disabled={loading}>
+              {loading ? "Atualizando..." : "Atualizar"}
             </button>
           </div>
         </div>
@@ -607,21 +656,13 @@ async function saveInvoice() {
             value={filteredRows.length}
             subtitle="Base da visão atual"
           />
-          <SummaryCard
-            title="Created"
-            value={metrics.created}
-            subtitle="Invoices criadas"
-          />
+          <SummaryCard title="Created" value={metrics.created} subtitle="Invoices criadas" />
           <SummaryCard
             title="InPayment"
             value={metrics.inPayment}
             subtitle="Invoices em pagamento"
           />
-          <SummaryCard
-            title="Paid"
-            value={metrics.paid}
-            subtitle="Invoices pagas"
-          />
+          <SummaryCard title="Paid" value={metrics.paid} subtitle="Invoices pagas" />
           <SummaryCard
             title="Valor total"
             value={metrics.totalAmount}
@@ -641,7 +682,14 @@ async function saveInvoice() {
             overflow: "hidden",
           }}
         >
-          <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "72vh", position: "relative" }}>
+          <div
+            style={{
+              overflowX: "auto",
+              overflowY: "auto",
+              maxHeight: "72vh",
+              position: "relative",
+            }}
+          >
             <table
               style={{
                 borderCollapse: "separate",
@@ -701,10 +749,7 @@ async function saveInvoice() {
                         </span>
                       </td>
                       <td style={{ ...S.td, minWidth: 100, textAlign: "center" }}>
-                        <button
-                          style={S.btnGhost}
-                          onClick={() => openInvoiceModal(row)}
-                        >
+                        <button style={S.btnGhost} onClick={() => openInvoiceModal(row)}>
                           Edit
                         </button>
                       </td>
@@ -785,7 +830,7 @@ async function saveInvoice() {
               </div>
 
               <div style={{ display: "flex", gap: 8 }}>
-                <button style={S.btnGhost} onClick={closeInvoiceModal}>
+                <button style={S.btnGhost} onClick={closeInvoiceModal} disabled={savingInvoice}>
                   Cancelar
                 </button>
                 <button style={S.btnPrimary} onClick={saveInvoice} disabled={savingInvoice}>
@@ -888,7 +933,7 @@ async function saveInvoice() {
 
                   <div>
                     <span style={S.label}>Invoice ID</span>
-                    <input style={S.input} value={invoiceModal.row.invoiceId} readOnly />
+                    <input style={S.input} value={normalizeInvoiceId(invoiceModal.row)} readOnly />
                   </div>
                 </div>
               </div>
