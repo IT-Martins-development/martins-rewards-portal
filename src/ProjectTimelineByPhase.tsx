@@ -360,7 +360,7 @@ function taskVisual(task: TaskDoc | null) {
   if (normalized === "in progress" || normalized === "inprogress") {
     if (isLateDanger) {
       return {
-        className: "progress danger",
+        className: "progress",
         date: formatDate(refDate),
         label: "Em andamento crítica",
         severity: "progress" as const,
@@ -369,7 +369,7 @@ function taskVisual(task: TaskDoc | null) {
 
     if (isLateWarning) {
       return {
-        className: "progress warning",
+        className: "progress",
         date: formatDate(refDate),
         label: "Em andamento vencida",
         severity: "progress" as const,
