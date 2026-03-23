@@ -363,7 +363,7 @@ function taskVisual(task: TaskDoc | null) {
         className: "progress danger",
         date: formatDate(refDate),
         label: "Em andamento crítica",
-        severity: "danger" as const,
+        severity: "progress" as const,
       };
     }
 
@@ -372,7 +372,7 @@ function taskVisual(task: TaskDoc | null) {
         className: "progress warning",
         date: formatDate(refDate),
         label: "Em andamento vencida",
-        severity: "warning" as const,
+        severity: "progress" as const,
       };
     }
 
