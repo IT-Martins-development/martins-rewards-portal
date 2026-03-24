@@ -572,13 +572,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {page === "projects" && <ProjectControl />}
           {page === "timeline" && <ProjectTimelineByPhase />}
           {page === "invoices" && <InvoicesManagement />}
-
-          {page === "management-holds" && (
-            <PlaceholderPage
-              title="Management Hold"
-              description="Área reservada para o módulo de management hold."
-            />
-          )}
+          {page === "management-holds" && <ManagementHolds />}
 
           {page === "future-approvals" && (
             <PlaceholderPage
