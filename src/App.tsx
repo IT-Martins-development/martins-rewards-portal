@@ -13,6 +13,7 @@ import RewardsUser from "./RewardsUser";
 import ProjectControl from "./ProjectControl";
 import ProjectTimelineByPhase from "./ProjectTimelineByPhase";
 import InvoicesManagement from "./InvoicesManagement";
+import ManagementHolds from "./management-holds";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
@@ -28,7 +29,7 @@ type Page =
   | "projects"
   | "timeline"
   | "invoices"
-  | "management-hold"
+  | "management-holds"
   | "future-approvals";
 
 type MenuGroupKey =
@@ -313,7 +314,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     projects: "project-management-master",
     timeline: "project-management-master",
     invoices: "finance",
-    "management-hold": "finance",
+    "management-holds": "finance",
     "future-approvals": "approvals",
   };
 
@@ -533,8 +534,8 @@ function AppShell({ signOut }: { signOut?: () => void }) {
               Invoices
             </button>
             <button
-              style={page === "management-hold" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("management-hold")}
+              style={page === "management-holds" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("management-holds")}
             >
               Management Hold
             </button>
@@ -572,7 +573,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {page === "timeline" && <ProjectTimelineByPhase />}
           {page === "invoices" && <InvoicesManagement />}
 
-          {page === "management-hold" && (
+          {page === "management-holds" && (
             <PlaceholderPage
               title="Management Hold"
               description="Área reservada para o módulo de management hold."
