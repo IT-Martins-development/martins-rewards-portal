@@ -77,7 +77,7 @@ type Filters = {
   title: string;
   parcelId: string;
   holdType: "" | HoldType;
-  activeOnly: boolean;
+  activeOnly: "" | "true";
   pageSize: PageSize;
 };
 
@@ -461,7 +461,7 @@ export default function ManagementHolds() {
     title: "",
     parcelId: "",
     holdType: "",
-    activeOnly: true,
+    activeOnly: "true",
     pageSize: 25,
   });
 
@@ -586,23 +586,24 @@ export default function ManagementHolds() {
     },
   };
 
-  const buildQueryString = useCallback(
-    (includePage = true) => {
-      const params = new URLSearchParams();
+const buildQueryString = useCallback(
+  (includePage = true) => {
+    const params = new URLSearchParams();
 
-      if (filters.title) params.append("title", filters.title);
-      if (filters.parcelId) params.append("parcelId", filters.parcelId);
-      if (filters.holdType) params.append("holdType", filters.holdType);
-      if (filters.activeOnly) params.append("activeOnly", "true");
-      if (includePage) {
-        params.append("page", String(page));
-        params.append("pageSize", String(filters.pageSize));
-      }
+    if (filters.title.trim()) params.append("title", filters.title.trim());
+    if (filters.parcelId.trim()) params.append("parcelId", filters.parcelId.trim());
+    if (filters.holdType) params.append("holdType", filters.holdType);
+    if (filters.activeOnly) params.append("activeOnly", filters.activeOnly);
 
-      return params.toString();
-    },
-    [filters.title, filters.parcelId, filters.holdType, filters.activeOnly, filters.pageSize, page]
-  );
+    if (includePage) {
+      params.append("page", String(page));
+      params.append("pageSize", String(filters.pageSize));
+    }
+
+    return params.toString();
+  },
+  [filters.title, filters.parcelId, filters.holdType, filters.activeOnly, filters.pageSize, page]
+);
 
   const fetchDashboard = useCallback(async () => {
     setLoadingDashboard(true);
@@ -1010,11 +1011,11 @@ export default function ManagementHolds() {
             <span style={S.label}>Only Active</span>
             <select
               style={S.input}
-              value={filters.activeOnly ? "true" : "false"}
-              onChange={(e) => setFilters((p) => ({ ...p, activeOnly: e.target.value === "true" }))}
+              value={filters.activeOnly}
+              onChange={(e) => setFilters((p) => ({ ...p, activeOnly: e.target.value as "" | "true" }))}
             >
+              <option value="">All</option>
               <option value="true">Yes</option>
-              <option value="false">All</option>
             </select>
           </div>
 
