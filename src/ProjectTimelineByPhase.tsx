@@ -175,7 +175,7 @@ const TASK_ORDER: Record<PhaseKey, string[]> = {
     "Eletrical Rough",
     "Inspection - Rough Mechanical",
     "Inspection - Wire Lath",
-    "Stucco",
+    "Stucco Grade",
     "Order Paver Driveway",
     "Inspection - Rough Electric",
     "Delivery - Shingles & Vents",
