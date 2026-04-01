@@ -14,6 +14,7 @@ import ProjectControl from "./ProjectControl";
 import ProjectTimelineByPhase from "./ProjectTimelineByPhase";
 import InvoicesManagement from "./InvoicesManagement";
 import ManagementHolds from "./management-holds";
+import ProjectExpenses from "./project-expenses";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
@@ -30,6 +31,7 @@ type Page =
   | "timeline"
   | "invoices"
   | "management-holds"
+  | "project-expenses"
   | "future-approvals";
 
 type MenuGroupKey =
@@ -316,6 +318,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     invoices: "finance",
     "management-holds": "finance",
     "future-approvals": "approvals",
+    "project-expenses": "finance",
   };
 
   function toggleGroup(group: MenuGroupKey) {
@@ -573,6 +576,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {page === "timeline" && <ProjectTimelineByPhase />}
           {page === "invoices" && <InvoicesManagement />}
           {page === "management-holds" && <ManagementHolds />}
+          {page === "project-expenses" && <ProjectExpenses />}
 
           {page === "future-approvals" && (
             <PlaceholderPage
