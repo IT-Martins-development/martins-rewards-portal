@@ -216,6 +216,11 @@ function HomePage({ onOpen }: { onOpen: (page: Page) => void }) {
       title: "Timeline by Phase",
       description: "Veja a timeline por fase com status das tasks do projeto.",
     },
+    {
+    page: "project-expenses",
+    title: "Project Expenses",
+    description: "Consulte despesas por projeto e compare com o contract value.",
+    },
   ];
 
   return (
@@ -536,11 +541,19 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             >
               Invoices
             </button>
+
             <button
               style={page === "management-holds" ? subBtnActive : subBtnBase}
               onClick={() => openPage("management-holds")}
             >
               Management Hold
+            </button>
+
+            <button
+              style={page === "project-expenses" ? subBtnActive : subBtnBase}
+              onClick={() => openPage("project-expenses")}
+            >
+              Project Expenses
             </button>
           </MenuGroup>
 
