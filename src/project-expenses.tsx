@@ -90,6 +90,19 @@ type Filters = {
   pageSize: PageSize;
 };
 
+type DetailFlatRow = DetailItem & {
+  type: string;
+};
+
+type DetailFilters = {
+  type: string;
+  service: string;
+  vendor: string;
+  status: "All" | "Classified" | "Unclassified";
+  startDate: string;
+  endDate: string;
+};
+
 type DetailModalState = {
   open: boolean;
   loading: boolean;
@@ -352,6 +365,14 @@ export default function ProjectExpenses() {
     loading: false,
     data: null,
   });
+  const [detailFilters, setDetailFilters] = useState<DetailFilters>({
+    type: "All",
+    service: "",
+    vendor: "",
+    status: "All",
+    startDate: "",
+    endDate: "",
+  });
 
   const S: Record<string, React.CSSProperties> = {
     page: {
@@ -455,7 +476,13 @@ export default function ProjectExpenses() {
     },
     tableWrap: {
       overflow: "auto",
-      maxHeight: 480,
+      border: "1px solid rgba(17,24,39,0.08)",
+      borderRadius: 16,
+      background: "#fff",
+    },
+    detailTableWrap: {
+      overflow: "auto",
+      maxHeight: "calc(100vh - 360px)",
       border: "1px solid rgba(17,24,39,0.08)",
       borderRadius: 16,
       background: "#fff",
@@ -465,6 +492,12 @@ export default function ProjectExpenses() {
       borderCollapse: "separate",
       borderSpacing: 0,
       minWidth: 1100,
+    },
+    detailTable: {
+      width: "100%",
+      borderCollapse: "separate",
+      borderSpacing: 0,
+      minWidth: 1250,
     },
     th: {
       position: "sticky",
@@ -508,7 +541,7 @@ export default function ProjectExpenses() {
       zIndex: 2000,
     },
     modalPanel: {
-      width: "min(1200px, 96vw)",
+      width: "min(1400px, 98vw)",
       height: "100vh",
       background: "#F6F7F9",
       boxShadow: "-20px 0 50px rgba(15,23,42,0.18)",
@@ -535,15 +568,6 @@ export default function ProjectExpenses() {
       borderRadius: 16,
       border: "1px solid rgba(17,24,39,0.08)",
       overflow: "hidden",
-    },
-    groupHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      gap: 12,
-      padding: 16,
-      background: "#faf8f5",
-      borderBottom: "1px solid rgba(17,24,39,0.08)",
-      flexWrap: "wrap",
     },
     chipRow: {
       display: "flex",
@@ -620,6 +644,14 @@ export default function ProjectExpenses() {
     async (row: SummaryRow) => {
       setDetailModal({ open: true, loading: true, data: null });
       setDetailError("");
+      setDetailFilters({
+        type: "All",
+        service: "",
+        vendor: "",
+        status: "All",
+        startDate: filters.startDate || "",
+        endDate: filters.endDate || "",
+      });
 
       try {
         const response = await fetch(PROJECT_EXPENSES_API_BASE, {
@@ -669,6 +701,17 @@ export default function ProjectExpenses() {
     setPage(1);
   }, []);
 
+  const resetDetailFilters = useCallback(() => {
+    setDetailFilters({
+      type: "All",
+      service: "",
+      vendor: "",
+      status: "All",
+      startDate: "",
+      endDate: "",
+    });
+  }, []);
+
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil(rows.length / filters.pageSize));
   }, [rows.length, filters.pageSize]);
@@ -695,6 +738,79 @@ export default function ProjectExpenses() {
       }
     );
   }, [rows]);
+
+  const detailRows = useMemo<DetailFlatRow[]>(() => {
+    if (!detailModal.data) return [];
+    return detailModal.data.groups.flatMap((group) =>
+      group.items.map((item) => ({
+        ...item,
+        type: group.groupName,
+      }))
+    );
+  }, [detailModal.data]);
+
+  const detailTypeOptions = useMemo(() => {
+    const types = Array.from(new Set(detailRows.map((row) => row.type))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    return ["All", ...types];
+  }, [detailRows]);
+
+  const filteredDetailRows = useMemo(() => {
+    return detailRows.filter((item) => {
+      const matchesType = detailFilters.type === "All" || item.type === detailFilters.type;
+
+      const matchesService =
+        !detailFilters.service ||
+        item.productTitle.toLowerCase().includes(detailFilters.service.toLowerCase());
+
+      const matchesVendor =
+        !detailFilters.vendor ||
+        item.vendor.toLowerCase().includes(detailFilters.vendor.toLowerCase());
+
+      const matchesStatus =
+        detailFilters.status === "All" || item.classificationStatus === detailFilters.status;
+
+      const itemTime = item.invoiceDate ? new Date(item.invoiceDate).getTime() : null;
+
+      const matchesStart =
+        !detailFilters.startDate ||
+        (itemTime !== null &&
+          itemTime >= new Date(`${detailFilters.startDate}T00:00:00`).getTime());
+
+      const matchesEnd =
+        !detailFilters.endDate ||
+        (itemTime !== null &&
+          itemTime <= new Date(`${detailFilters.endDate}T23:59:59`).getTime());
+
+      return (
+        matchesType &&
+        matchesService &&
+        matchesVendor &&
+        matchesStatus &&
+        matchesStart &&
+        matchesEnd
+      );
+    });
+  }, [detailRows, detailFilters]);
+
+  const filteredDetailTotals = useMemo(() => {
+    return filteredDetailRows.reduce(
+      (acc, row) => {
+        acc.totalActual += row.actualCost;
+        acc.totalBudget += row.budgetedCost;
+        acc.totalVariance += row.variance;
+        acc.itemCount += 1;
+        return acc;
+      },
+      {
+        totalActual: 0,
+        totalBudget: 0,
+        totalVariance: 0,
+        itemCount: 0,
+      }
+    );
+  }, [filteredDetailRows]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -942,7 +1058,7 @@ export default function ProjectExpenses() {
                     <span style={S.chip}>County: {detailModal.data.county || "-"}</span>
                     <span style={S.chip}>House Model: {detailModal.data.houseModelNumber || "-"}</span>
                     <span style={S.chip}>Contract: {formatMoney(detailModal.data.contractValue)}</span>
-                    <span style={S.chip}>Items: {detailModal.data.totals.itemCount}</span>
+                    <span style={S.chip}>Items: {filteredDetailTotals.itemCount}</span>
                   </div>
                 ) : null}
               </div>
@@ -964,17 +1080,17 @@ export default function ProjectExpenses() {
                   <div style={S.cardsGrid}>
                     <SummaryCard
                       title="Actual Cost"
-                      value={formatMoney(detailModal.data.totals.totalActual)}
+                      value={formatMoney(filteredDetailTotals.totalActual)}
                       subtitle="Sum of actual invoice items"
                     />
                     <SummaryCard
                       title="Budgeted Cost"
-                      value={formatMoney(detailModal.data.totals.totalBudget)}
+                      value={formatMoney(filteredDetailTotals.totalBudget)}
                       subtitle="Estimated amount from financial model"
                     />
                     <SummaryCard
                       title="Variance"
-                      value={formatMoney(detailModal.data.totals.totalVariance)}
+                      value={formatMoney(filteredDetailTotals.totalVariance)}
                       subtitle="Actual minus budgeted"
                     />
                     <SummaryCard
@@ -990,87 +1106,151 @@ export default function ProjectExpenses() {
                     />
                   </div>
 
-                  {detailModal.data.groups.length === 0 ? (
-                    <div style={S.groupCard}>
-                      <div style={S.empty}>No expense details found for this project.</div>
-                    </div>
-                  ) : (
-                    detailModal.data.groups.map((group) => (
-                      <div key={group.groupName} style={S.groupCard}>
-                        <div style={S.groupHeader}>
-                          <div>
-                            <div style={{ fontSize: 18, fontWeight: 900 }}>{group.groupName}</div>
-                            <div
-                              style={{
-                                color: "rgba(17,24,39,0.62)",
-                                fontSize: 12,
-                                marginTop: 4,
-                              }}
-                            >
-                              {group.items.length} item(s)
-                            </div>
-                          </div>
-
-                          <div style={S.chipRow}>
-                            <span style={S.chip}>Actual: {formatMoney(group.totalActual)}</span>
-                            <span style={S.chip}>Budget: {formatMoney(group.totalBudget)}</span>
-                            <span style={S.chip}>Variance: {formatMoney(group.totalVariance)}</span>
-                          </div>
-                        </div>
-
-                        <div style={S.tableWrap}>
-                          <table style={S.table}>
-                            <thead>
-                              <tr>
-                                <th style={S.th}>Invoice Date</th>
-                                <th style={S.th}>Vendor</th>
-                                <th style={S.th}>Product / Service</th>
-                                <th style={S.th}>Actual</th>
-                                <th style={S.th}>Budgeted</th>
-                                <th style={S.th}>Variance</th>
-                                <th style={S.th}>Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {group.items.map((item, idx) => (
-                                <tr key={`${group.groupName}-${item.invoiceNumber}-${idx}`}>
-                                  <td style={S.td}>{formatDate(item.invoiceDate)}</td>
-                                  <td style={S.td}>
-                                    <div style={{ fontWeight: 800 }}>{item.vendor || "-"}</div>
-                                    <div
-                                      style={{
-                                        color: "rgba(17,24,39,0.55)",
-                                        fontSize: 12,
-                                      }}
-                                    >
-                                      {item.invoiceNumber || "-"}
-                                    </div>
-                                  </td>
-                                  <td style={S.td}>
-                                    <div style={{ fontWeight: 800 }}>{item.productTitle || "-"}</div>
-                                    <div
-                                      style={{
-                                        color: "rgba(17,24,39,0.55)",
-                                        fontSize: 12,
-                                      }}
-                                    >
-                                      Product Id: {toStr(item.productId) || "-"}
-                                    </div>
-                                  </td>
-                                  <td style={S.td}>{formatMoney(item.actualCost)}</td>
-                                  <td style={S.td}>{formatMoney(item.budgetedCost)}</td>
-                                  <td style={S.td}>{formatMoney(item.variance)}</td>
-                                  <td style={S.td}>
-                                    <ClassificationBadge status={item.classificationStatus} />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                  <div style={S.filtersCard}>
+                    <div style={S.filtersGrid}>
+                      <div style={S.field}>
+                        <label style={S.label}>Type</label>
+                        <select
+                          style={S.input}
+                          value={detailFilters.type}
+                          onChange={(e) =>
+                            setDetailFilters((prev) => ({ ...prev, type: e.target.value }))
+                          }
+                        >
+                          {detailTypeOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    ))
-                  )}
+
+                      <div style={S.field}>
+                        <label style={S.label}>Service / Product</label>
+                        <input
+                          style={S.input}
+                          value={detailFilters.service}
+                          onChange={(e) =>
+                            setDetailFilters((prev) => ({ ...prev, service: e.target.value }))
+                          }
+                          placeholder="Service or product name"
+                        />
+                      </div>
+
+                      <div style={S.field}>
+                        <label style={S.label}>Vendor</label>
+                        <input
+                          style={S.input}
+                          value={detailFilters.vendor}
+                          onChange={(e) =>
+                            setDetailFilters((prev) => ({ ...prev, vendor: e.target.value }))
+                          }
+                          placeholder="Vendor"
+                        />
+                      </div>
+
+                      <div style={S.field}>
+                        <label style={S.label}>Status</label>
+                        <select
+                          style={S.input}
+                          value={detailFilters.status}
+                          onChange={(e) =>
+                            setDetailFilters((prev) => ({
+                              ...prev,
+                              status: e.target.value as DetailFilters["status"],
+                            }))
+                          }
+                        >
+                          <option value="All">All</option>
+                          <option value="Classified">Classified</option>
+                          <option value="Unclassified">Unclassified</option>
+                        </select>
+                      </div>
+
+                      <div style={S.field}>
+                        <label style={S.label}>Date From</label>
+                        <input
+                          type="date"
+                          style={S.input}
+                          value={detailFilters.startDate}
+                          onChange={(e) =>
+                            setDetailFilters((prev) => ({ ...prev, startDate: e.target.value }))
+                          }
+                        />
+                      </div>
+
+                      <div style={S.field}>
+                        <label style={S.label}>Date To</label>
+                        <input
+                          type="date"
+                          style={S.input}
+                          value={detailFilters.endDate}
+                          onChange={(e) =>
+                            setDetailFilters((prev) => ({ ...prev, endDate: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div style={S.actions}>
+                      <button type="button" style={S.btnSecondary} onClick={resetDetailFilters}>
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={S.detailTableWrap}>
+                    <table style={S.detailTable}>
+                      <thead>
+                        <tr>
+                          <th style={S.th}>Type</th>
+                          <th style={S.th}>Invoice Date</th>
+                          <th style={S.th}>Vendor</th>
+                          <th style={S.th}>Service / Product</th>
+                          <th style={S.th}>Actual</th>
+                          <th style={S.th}>Budgeted</th>
+                          <th style={S.th}>Variance</th>
+                          <th style={S.th}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDetailRows.length === 0 ? (
+                          <tr>
+                            <td style={S.empty} colSpan={8}>
+                              No detail rows found with the selected filters.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredDetailRows.map((item, idx) => (
+                            <tr key={`${item.type}-${item.invoiceNumber}-${item.productId}-${idx}`}>
+                              <td style={S.td}>
+                                <div style={{ fontWeight: 800 }}>{item.type}</div>
+                              </td>
+                              <td style={S.td}>{formatDate(item.invoiceDate)}</td>
+                              <td style={S.td}>
+                                <div style={{ fontWeight: 800 }}>{item.vendor || "-"}</div>
+                                <div style={{ color: "rgba(17,24,39,0.55)", fontSize: 12 }}>
+                                  {item.invoiceNumber || "-"}
+                                </div>
+                              </td>
+                              <td style={S.td}>
+                                <div style={{ fontWeight: 800 }}>{item.productTitle || "-"}</div>
+                                <div style={{ color: "rgba(17,24,39,0.55)", fontSize: 12 }}>
+                                  Product Id: {toStr(item.productId) || "-"}
+                                </div>
+                              </td>
+                              <td style={S.td}>{formatMoney(item.actualCost)}</td>
+                              <td style={S.td}>{formatMoney(item.budgetedCost)}</td>
+                              <td style={S.td}>{formatMoney(item.variance)}</td>
+                              <td style={S.td}>
+                                <ClassificationBadge status={item.classificationStatus} />
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </>
               ) : (
                 <div style={S.groupCard}>
