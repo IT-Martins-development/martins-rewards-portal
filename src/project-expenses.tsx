@@ -81,7 +81,7 @@ type DetailApiResponse = {
 
 type Filters = {
   project: string;
-  productId: string;
+  product: string;
   county: string;
   houseModelNumber: string;
   vendor: string;
@@ -329,7 +329,7 @@ export default function ProjectExpenses() {
   const [detailError, setDetailError] = useState("");
   const [filters, setFilters] = useState<Filters>({
     project: "",
-    productId: "",
+    product: "",
     county: "",
     houseModelNumber: "",
     vendor: "",
@@ -571,8 +571,8 @@ export default function ProjectExpenses() {
     try {
       const body = {
         action: "summary",
-        projectId: filters.project.trim() || undefined,
-        productId: filters.productId.trim() || undefined,
+        project: filters.project.trim() || undefined,
+        product: filters.product.trim() || undefined,
         county: filters.county.trim() || undefined,
         houseModelNumber: filters.houseModelNumber.trim() || undefined,
         vendor: filters.vendor.trim() || undefined,
@@ -617,7 +617,7 @@ export default function ProjectExpenses() {
         body: JSON.stringify({
           action: "details",
           projectId: row.projectId,
-          productId: filters.productId.trim() || undefined,
+          productId: filters.product.trim() || undefined,
           vendor: filters.vendor.trim() || undefined,
           startDate: filters.startDate || undefined,
           endDate: filters.endDate || undefined,
@@ -645,7 +645,7 @@ export default function ProjectExpenses() {
   const resetFilters = useCallback(() => {
     setFilters({
       project: "",
-      productId: "",
+      product: "",
       county: "",
       houseModelNumber: "",
       vendor: "",
@@ -708,7 +708,7 @@ export default function ProjectExpenses() {
               style={S.input}
               value={filters.project}
               onChange={(e) => setFilters((prev) => ({ ...prev, project: e.target.value }))}
-              placeholder="Project id"
+              placeholder="Project name"
             />
           </div>
 
@@ -716,9 +716,9 @@ export default function ProjectExpenses() {
             <label style={S.label}>Product / Service Id</label>
             <input
               style={S.input}
-              value={filters.productId}
+              value={filters.product}
               onChange={(e) => setFilters((prev) => ({ ...prev, productId: e.target.value }))}
-              placeholder="Ex.: 4556"
+              placeholder="Product or service name"
             />
           </div>
 
