@@ -97,6 +97,7 @@ type DetailModalState = {
 };
 
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
+
 const PROJECT_EXPENSES_API_BASE =
   "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/finance-project-expenses";
 
@@ -138,7 +139,8 @@ function formatDate(value?: string | null) {
   return `${mm}-${dd}-${yyyy}`;
 }
 
-function parseApiResponseText(rawText: string) {
+async function parseApiResponse(response: Response) {
+  const rawText = await response.text();
   if (!rawText) return {};
   try {
     return JSON.parse(rawText);
@@ -149,11 +151,6 @@ function parseApiResponseText(rawText: string) {
       rawText,
     };
   }
-}
-
-async function parseApiResponse(response: Response) {
-  const rawText = await response.text();
-  return parseApiResponseText(rawText);
 }
 
 function parseSummaryRows(data: SummaryApiResponse | AnyObj): SummaryRow[] {
@@ -212,7 +209,8 @@ function parseDetailData(payload: DetailApiResponse | AnyObj): DetailData | null
             budgetGroup: toStr(item?.budgetGroup),
             budgetedCost: round2(item?.budgetedCost),
             variance: round2(item?.variance),
-            classificationStatus: item?.classificationStatus === "Unclassified" ? "Unclassified" : "Classified",
+            classificationStatus:
+              item?.classificationStatus === "Unclassified" ? "Unclassified" : "Classified",
             contractValue: round2(item?.contractValue),
             financialModelReferenceId: item?.financialModelReferenceId
               ? toStr(item?.financialModelReferenceId)
@@ -250,11 +248,22 @@ function SummaryCard({
         boxShadow: "0 8px 30px rgba(15,23,42,0.05)",
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(17,24,39,0.65)", marginBottom: 8 }}>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: "rgba(17,24,39,0.65)",
+          marginBottom: 8,
+        }}
+      >
         {title}
       </div>
-      <div style={{ fontSize: 28, fontWeight: 900, color: "#111827", lineHeight: 1.1 }}>{value}</div>
-      <div style={{ marginTop: 8, fontSize: 12, color: "rgba(17,24,39,0.70)" }}>{subtitle}</div>
+      <div style={{ fontSize: 28, fontWeight: 900, color: "#111827", lineHeight: 1.1 }}>
+        {value}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 12, color: "rgba(17,24,39,0.70)" }}>
+        {subtitle}
+      </div>
     </div>
   );
 }
@@ -446,6 +455,7 @@ export default function ProjectExpenses() {
     },
     tableWrap: {
       overflow: "auto",
+      maxHeight: 480,
       border: "1px solid rgba(17,24,39,0.08)",
       borderRadius: 16,
       background: "#fff",
@@ -606,36 +616,39 @@ export default function ProjectExpenses() {
     void loadSummary();
   }, [loadSummary]);
 
-  const openDetails = useCallback(async (row: SummaryRow) => {
-    setDetailModal({ open: true, loading: true, data: null });
-    setDetailError("");
+  const openDetails = useCallback(
+    async (row: SummaryRow) => {
+      setDetailModal({ open: true, loading: true, data: null });
+      setDetailError("");
 
-    try {
-      const response = await fetch(PROJECT_EXPENSES_API_BASE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "details",
-          projectId: row.projectId,
-          productId: filters.product.trim() || undefined,
-          vendor: filters.vendor.trim() || undefined,
-          startDate: filters.startDate || undefined,
-          endDate: filters.endDate || undefined,
-        }),
-      });
+      try {
+        const response = await fetch(PROJECT_EXPENSES_API_BASE, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "details",
+            projectId: row.projectId,
+            product: filters.product.trim() || undefined,
+            vendor: filters.vendor.trim() || undefined,
+            startDate: filters.startDate || undefined,
+            endDate: filters.endDate || undefined,
+          }),
+        });
 
-      const data = await parseApiResponse(response);
-      if (!response.ok || data?.ok === false) {
-        throw new Error(data?.message || "Failed to load project expense details.");
+        const data = await parseApiResponse(response);
+        if (!response.ok || data?.ok === false) {
+          throw new Error(data?.message || "Failed to load project expense details.");
+        }
+
+        setDetailModal({ open: true, loading: false, data: parseDetailData(data) });
+      } catch (e: any) {
+        console.error(e);
+        setDetailModal({ open: true, loading: false, data: null });
+        setDetailError(e?.message || "Failed to load project expense details.");
       }
-
-      setDetailModal({ open: true, loading: false, data: parseDetailData(data) });
-    } catch (e: any) {
-      console.error(e);
-      setDetailModal({ open: true, loading: false, data: null });
-      setDetailError(e?.message || "Failed to load project expense details.");
-    }
-  }, [filters]);
+    },
+    [filters]
+  );
 
   const closeDetails = useCallback(() => {
     setDetailModal({ open: false, loading: false, data: null });
@@ -693,7 +706,8 @@ export default function ProjectExpenses() {
         <div style={S.titleWrap}>
           <h2 style={S.title}>Project Expenses</h2>
           <p style={S.subtitle}>
-            Consulte despesas por projeto, compare com contract value e veja os detalhes classificados por grupo do financial model.
+            Consulte despesas por projeto, compare com contract value e veja os detalhes
+            classificados por grupo do financial model.
           </p>
         </div>
       </div>
@@ -703,7 +717,7 @@ export default function ProjectExpenses() {
       <div style={S.filtersCard}>
         <div style={S.filtersGrid}>
           <div style={S.field}>
-            <label style={S.label}>Project Id</label>
+            <label style={S.label}>Project</label>
             <input
               style={S.input}
               value={filters.project}
@@ -713,11 +727,11 @@ export default function ProjectExpenses() {
           </div>
 
           <div style={S.field}>
-            <label style={S.label}>Product / Service Id</label>
+            <label style={S.label}>Product / Service</label>
             <input
               style={S.input}
               value={filters.product}
-              onChange={(e) => setFilters((prev) => ({ ...prev, productId: e.target.value }))}
+              onChange={(e) => setFilters((prev) => ({ ...prev, product: e.target.value }))}
               placeholder="Product or service name"
             />
           </div>
@@ -737,7 +751,9 @@ export default function ProjectExpenses() {
             <input
               style={S.input}
               value={filters.houseModelNumber}
-              onChange={(e) => setFilters((prev) => ({ ...prev, houseModelNumber: e.target.value }))}
+              onChange={(e) =>
+                setFilters((prev) => ({ ...prev, houseModelNumber: e.target.value }))
+              }
               placeholder="House model"
             />
           </div>
@@ -804,10 +820,26 @@ export default function ProjectExpenses() {
       </div>
 
       <div style={S.cardsGrid}>
-        <SummaryCard title="Projects" value={rows.length} subtitle="Projects returned by current filters" />
-        <SummaryCard title="Contract Value" value={formatMoney(totals.contractValue)} subtitle="Sum of project contract values" />
-        <SummaryCard title="Total Expenses" value={formatMoney(totals.totalExpenses)} subtitle="Sum of invoice expenses" />
-        <SummaryCard title="Invoices" value={totals.invoiceCount} subtitle="Invoices counted in the summary" />
+        <SummaryCard
+          title="Projects"
+          value={rows.length}
+          subtitle="Projects returned by current filters"
+        />
+        <SummaryCard
+          title="Contract Value"
+          value={formatMoney(totals.contractValue)}
+          subtitle="Sum of project contract values"
+        />
+        <SummaryCard
+          title="Total Expenses"
+          value={formatMoney(totals.totalExpenses)}
+          subtitle="Sum of invoice expenses"
+        />
+        <SummaryCard
+          title="Invoices"
+          value={totals.invoiceCount}
+          subtitle="Invoices counted in the summary"
+        />
       </div>
 
       <div style={S.tableWrap}>
@@ -947,8 +979,14 @@ export default function ProjectExpenses() {
                     />
                     <SummaryCard
                       title="Classification"
-                      value={detailModal.data.financialModelFound ? "Financial Model Found" : "No Financial Model"}
-                      subtitle={detailModal.data.financialModelReferenceId || "No financial model linked"}
+                      value={
+                        detailModal.data.financialModelFound
+                          ? "Financial Model Found"
+                          : "No Financial Model"
+                      }
+                      subtitle={
+                        detailModal.data.financialModelReferenceId || "No financial model linked"
+                      }
                     />
                   </div>
 
@@ -962,8 +1000,14 @@ export default function ProjectExpenses() {
                         <div style={S.groupHeader}>
                           <div>
                             <div style={{ fontSize: 18, fontWeight: 900 }}>{group.groupName}</div>
-                            <div style={{ color: "rgba(17,24,39,0.62)", fontSize: 12, marginTop: 4 }}>
-                              {group.itemCount} item(s)
+                            <div
+                              style={{
+                                color: "rgba(17,24,39,0.62)",
+                                fontSize: 12,
+                                marginTop: 4,
+                              }}
+                            >
+                              {group.items.length} item(s)
                             </div>
                           </div>
 
@@ -993,11 +1037,23 @@ export default function ProjectExpenses() {
                                   <td style={S.td}>{formatDate(item.invoiceDate)}</td>
                                   <td style={S.td}>
                                     <div style={{ fontWeight: 800 }}>{item.vendor || "-"}</div>
-                                    <div style={{ color: "rgba(17,24,39,0.55)", fontSize: 12 }}>{item.invoiceNumber || "-"}</div>
+                                    <div
+                                      style={{
+                                        color: "rgba(17,24,39,0.55)",
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      {item.invoiceNumber || "-"}
+                                    </div>
                                   </td>
                                   <td style={S.td}>
                                     <div style={{ fontWeight: 800 }}>{item.productTitle || "-"}</div>
-                                    <div style={{ color: "rgba(17,24,39,0.55)", fontSize: 12 }}>
+                                    <div
+                                      style={{
+                                        color: "rgba(17,24,39,0.55)",
+                                        fontSize: 12,
+                                      }}
+                                    >
                                       Product Id: {toStr(item.productId) || "-"}
                                     </div>
                                   </td>
