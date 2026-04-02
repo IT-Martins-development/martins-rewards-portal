@@ -13,13 +13,14 @@ import RewardsUser from "./RewardsUser";
 import ProjectControl from "./ProjectControl";
 import ProjectTimelineByPhase from "./ProjectTimelineByPhase";
 import InvoicesManagement from "./InvoicesManagement";
+import ManagementAccess from "./ManagementAccess";
 import ManagementHolds from "./management-holds";
 import ProjectExpenses from "./project-expenses";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
 
-type Role = "ADMIN" | "INVESTOR" | "NONE";
+type Role = "INVESTOR" | "PORTAL";
 
 type Page =
   | "home"
@@ -30,6 +31,7 @@ type Page =
   | "projects"
   | "timeline"
   | "invoices"
+  | "management-access"
   | "management-holds"
   | "project-expenses"
   | "future-approvals";
@@ -39,6 +41,32 @@ type MenuGroupKey =
   | "project-management-master"
   | "finance"
   | "approvals";
+
+type AccessDoc = {
+  _id?: string;
+  groupId: string;
+  groupName: string;
+  isAdmin: boolean;
+  pages: string[];
+  updatedAt?: string | null;
+  updatedBy?: string;
+};
+
+type AccessData = {
+  found: boolean;
+  user: {
+    _id: string;
+    name: string;
+    email: string;
+  } | null;
+  groupIds: string[];
+  isAdmin: boolean;
+  pages: string[];
+  permissionDocs: AccessDoc[];
+};
+
+const ACCESS_CONTROL_API =
+  "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/getAccessControl";
 
 const shell: React.CSSProperties = {
   minHeight: "100vh",
@@ -129,7 +157,7 @@ const contentWrap: React.CSSProperties = {
 
 const topbar: React.CSSProperties = {
   display: "flex",
-  justifyContent: "flex-end",
+  justifyContent: "space-between",
   gap: 10,
   alignItems: "center",
   marginBottom: 12,
@@ -170,13 +198,33 @@ function normalizeGroups(groups?: string[]) {
   return (groups || []).map((g) => String(g).trim().toLowerCase());
 }
 
-function roleFromGroups(groups?: string[]): Role {
+function isInvestorFromGroups(groups?: string[]) {
   const g = normalizeGroups(groups);
-  const isAdmin = g.includes("adminrewards");
-  const isInvestor = g.includes("investor");
-  if (isAdmin) return "ADMIN";
-  if (isInvestor) return "INVESTOR";
-  return "NONE";
+  return g.includes("investor");
+}
+
+function canAccess(page: Page, accessData: AccessData | null) {
+  if (page === "home") return true;
+  if (!accessData) return false;
+  if (accessData.isAdmin) return true;
+  return Array.isArray(accessData.pages) && accessData.pages.includes(page);
+}
+
+function AccessDeniedCard({ page }: { page: string }) {
+  return (
+    <div
+      style={{
+        padding: 24,
+        borderRadius: 16,
+        background: "#fff7ed",
+        border: "1px solid #fed7aa",
+        color: "#9a3412",
+        fontWeight: 700,
+      }}
+    >
+      You do not have access to this functionality: <strong>{page}</strong>
+    </div>
+  );
 }
 
 function PlaceholderPage({
@@ -194,7 +242,13 @@ function PlaceholderPage({
   );
 }
 
-function HomePage({ onOpen }: { onOpen: (page: Page) => void }) {
+function HomePage({
+  onOpen,
+  canOpen,
+}: {
+  onOpen: (page: Page) => void;
+  canOpen: (page: Page) => boolean;
+}) {
   const quickLinks: Array<{ page: Exclude<Page, "home">; title: string; description: string }> = [
     {
       page: "crud",
@@ -217,23 +271,34 @@ function HomePage({ onOpen }: { onOpen: (page: Page) => void }) {
       description: "Veja a timeline por fase com status das tasks do projeto.",
     },
     {
-    page: "project-expenses",
-    title: "Project Expenses",
-    description: "Consulte despesas por projeto e compare com o contract value.",
+      page: "project-expenses",
+      title: "Project Expenses",
+      description: "Consulte despesas por projeto e compare com o contract value.",
     },
   ];
+
+  const visibleLinks = quickLinks.filter((item) => canOpen(item.page));
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <div style={placeholderCard}>
-        <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 8 }}>Portal Martins Development</div>
+        <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 8 }}>
+          Portal Martins Development
+        </div>
         <div style={{ color: "#6B7280", fontSize: 14 }}>
-          Escolha um modulo no menu lateral ou use os atalhos abaixo para abrir as areas mais usadas.
+          Escolha um modulo no menu lateral ou use os atalhos abaixo para abrir as areas
+          mais usadas.
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-        {quickLinks.map((item) => (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 16,
+        }}
+      >
+        {visibleLinks.map((item) => (
           <button
             key={item.page}
             type="button"
@@ -278,7 +343,7 @@ function MenuGroup({
         <span>{collapsed ? title[0] : title}</span>
         <span style={{ fontSize: 14 }}>{open ? "▾" : "▸"}</span>
       </button>
-        {open && !collapsed ? <div style={subMenuWrap}>{children}</div> : null}
+      {open && !collapsed ? <div style={subMenuWrap}>{children}</div> : null}
     </div>
   );
 }
@@ -286,9 +351,13 @@ function MenuGroup({
 function AppShell({ signOut }: { signOut?: () => void }) {
   const [page, setPage] = useState<Page>("home");
   const [lang, setLang] = useState<Lang>("pt");
-  const [role, setRole] = useState<Role>("NONE");
+  const [role, setRole] = useState<Role>("PORTAL");
   const [checking, setChecking] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const [accessData, setAccessData] = useState<AccessData | null>(null);
+  const [accessLoading, setAccessLoading] = useState(true);
+  const [accessError, setAccessError] = useState("");
 
   const layoutStyle: React.CSSProperties = {
     ...layout,
@@ -321,9 +390,10 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     projects: "project-management-master",
     timeline: "project-management-master",
     invoices: "finance",
+    "management-access": "approvals",
     "management-holds": "finance",
-    "future-approvals": "approvals",
     "project-expenses": "finance",
+    "future-approvals": "approvals",
   };
 
   function toggleGroup(group: MenuGroupKey) {
@@ -331,6 +401,11 @@ function AppShell({ signOut }: { signOut?: () => void }) {
   }
 
   function openPage(nextPage: Page) {
+    if (!canAccess(nextPage, accessData)) {
+      setPage(nextPage);
+      return;
+    }
+
     setPage(nextPage);
     const group = pageGroup[nextPage];
     if (group) {
@@ -341,28 +416,102 @@ function AppShell({ signOut }: { signOut?: () => void }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function checkAccess() {
+    async function bootstrap() {
       setChecking(true);
       try {
         const session = await fetchAuthSession();
-        const groups =
-          (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) || [];
-        const r = roleFromGroups(groups);
-        if (!cancelled) setRole(r);
+        const payload = session.tokens?.idToken?.payload || {};
+        const groups = (payload["cognito:groups"] as string[] | undefined) || [];
+        const email = String(payload["email"] || "");
+
+        if (!cancelled) {
+          setUserEmail(email);
+          setRole(isInvestorFromGroups(groups) ? "INVESTOR" : "PORTAL");
+        }
       } catch {
-        if (!cancelled) setRole("NONE");
+        if (!cancelled) {
+          setUserEmail("");
+          setRole("PORTAL");
+        }
       } finally {
         if (!cancelled) setChecking(false);
       }
     }
 
-    checkAccess();
+    void bootstrap();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (checking) {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAccess() {
+      if (!userEmail || role === "INVESTOR") {
+        setAccessLoading(false);
+        return;
+      }
+
+      setAccessLoading(true);
+      setAccessError("");
+
+      try {
+        const response = await fetch(ACCESS_CONTROL_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "getUserPageAccess",
+            email: userEmail,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || result?.ok === false) {
+          throw new Error(result?.message || "Failed to load access control.");
+        }
+
+        if (!cancelled) {
+          setAccessData(result?.data || null);
+        }
+      } catch (error: any) {
+        console.error("Failed to load access control", error);
+        if (!cancelled) {
+          setAccessData(null);
+          setAccessError(error?.message || "Failed to load access control.");
+        }
+      } finally {
+        if (!cancelled) {
+          setAccessLoading(false);
+        }
+      }
+    }
+
+    void loadAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail, role]);
+
+  const hasAnyAccess = useMemo(() => {
+    if (!accessData) return false;
+    if (accessData.isAdmin) return true;
+    return Array.isArray(accessData.pages) && accessData.pages.length > 0;
+  }, [accessData]);
+
+  useEffect(() => {
+    if (role === "INVESTOR") return;
+    if (accessLoading) return;
+    if (page === "home") return;
+
+    if (!canAccess(page, accessData)) {
+      setPage("home");
+    }
+  }, [page, accessData, accessLoading, role]);
+
+  if (checking || accessLoading) {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
         <div style={{ maxWidth: 900, margin: "0 auto", color: "#111827", fontWeight: 800 }}>
@@ -409,7 +558,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     );
   }
 
-  if (role === "NONE") {
+  if (!hasAnyAccess) {
     return (
       <div style={{ minHeight: "100vh", background: "#F6F7F9", padding: 24 }}>
         <div
@@ -427,6 +576,21 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           <div style={{ opacity: 0.75, marginBottom: 14 }}>
             Seu usuário não tem permissão de acesso.
           </div>
+          {accessError ? (
+            <div
+              style={{
+                marginBottom: 14,
+                color: "#991b1b",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                borderRadius: 10,
+                padding: 12,
+                fontWeight: 700,
+              }}
+            >
+              {accessError}
+            </div>
+          ) : null}
           <button style={logoutBtn} onClick={() => signOut?.()}>
             Sair
           </button>
@@ -434,6 +598,14 @@ function AppShell({ signOut }: { signOut?: () => void }) {
       </div>
     );
   }
+
+  const renderProtectedPage = (targetPage: Page, node: React.ReactNode) => {
+    if (page !== targetPage) return null;
+    if (!canAccess(targetPage, accessData)) {
+      return <AccessDeniedCard page={targetPage} />;
+    }
+    return node;
+  };
 
   return (
     <div style={shell}>
@@ -481,30 +653,41 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             collapsed={collapsed}
             onToggle={() => toggleGroup("rewards-admin")}
           >
-            <button
-              style={page === "crud" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("crud")}
-            >
-              Rewards (CRUD)
-            </button>
-            <button
-              style={page === "approvals" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("approvals")}
-            >
-              Aprovações
-            </button>
-            <button
-              style={page === "report" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("report")}
-            >
-              Relatório
-            </button>
-            <button
-              style={page === "balances" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("balances")}
-            >
-              Saldos
-            </button>
+            {canAccess("crud", accessData) && (
+              <button
+                style={page === "crud" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("crud")}
+              >
+                Rewards (CRUD)
+              </button>
+            )}
+
+            {canAccess("approvals", accessData) && (
+              <button
+                style={page === "approvals" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("approvals")}
+              >
+                Aprovações
+              </button>
+            )}
+
+            {canAccess("report", accessData) && (
+              <button
+                style={page === "report" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("report")}
+              >
+                Relatório
+              </button>
+            )}
+
+            {canAccess("balances", accessData) && (
+              <button
+                style={page === "balances" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("balances")}
+              >
+                Saldos
+              </button>
+            )}
           </MenuGroup>
 
           <MenuGroup
@@ -514,18 +697,23 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             collapsed={collapsed}
             onToggle={() => toggleGroup("project-management-master")}
           >
-            <button
-              style={page === "projects" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("projects")}
-            >
-              Projetos
-            </button>
-            <button
-              style={page === "timeline" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("timeline")}
-            >
-              Timeline by Phase
-            </button>
+            {canAccess("projects", accessData) && (
+              <button
+                style={page === "projects" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("projects")}
+              >
+                Projetos
+              </button>
+            )}
+
+            {canAccess("timeline", accessData) && (
+              <button
+                style={page === "timeline" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("timeline")}
+              >
+                Timeline by Phase
+              </button>
+            )}
           </MenuGroup>
 
           <MenuGroup
@@ -535,26 +723,32 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             collapsed={collapsed}
             onToggle={() => toggleGroup("finance")}
           >
-            <button
-              style={page === "invoices" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("invoices")}
-            >
-              Invoices
-            </button>
+            {canAccess("invoices", accessData) && (
+              <button
+                style={page === "invoices" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("invoices")}
+              >
+                Invoices
+              </button>
+            )}
 
-            <button
-              style={page === "management-holds" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("management-holds")}
-            >
-              Management Hold
-            </button>
+            {canAccess("management-holds", accessData) && (
+              <button
+                style={page === "management-holds" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("management-holds")}
+              >
+                Management Hold
+              </button>
+            )}
 
-            <button
-              style={page === "project-expenses" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("project-expenses")}
-            >
-              Project Expenses
-            </button>
+            {canAccess("project-expenses", accessData) && (
+              <button
+                style={page === "project-expenses" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("project-expenses")}
+              >
+                Project Expenses
+              </button>
+            )}
           </MenuGroup>
 
           <MenuGroup
@@ -564,39 +758,60 @@ function AppShell({ signOut }: { signOut?: () => void }) {
             collapsed={collapsed}
             onToggle={() => toggleGroup("approvals")}
           >
-            <button
-              style={page === "future-approvals" ? subBtnActive : subBtnBase}
-              onClick={() => openPage("future-approvals")}
-            >
-              Aprovações Futuras
-            </button>
+            {canAccess("management-access", accessData) && (
+              <button
+                style={page === "management-access" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("management-access")}
+              >
+                Management Access
+              </button>
+            )}
+
+            {canAccess("future-approvals", accessData) && (
+              <button
+                style={page === "future-approvals" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("future-approvals")}
+              >
+                Aprovações Futuras
+              </button>
+            )}
           </MenuGroup>
         </aside>
 
         <main style={contentWrap}>
           <div style={topbar}>
+            <div style={{ color: "#6B7280", fontSize: 13, fontWeight: 700 }}>
+              {userEmail || accessData?.user?.email || ""}
+            </div>
             <button style={logoutBtn} onClick={() => signOut?.()}>
               Sair
             </button>
           </div>
 
-          {page === "home" && <HomePage onOpen={openPage} />}
-          {page === "crud" && <RewardsCRUD lang={lang} />}
-          {page === "approvals" && <RewardsApprovals lang={lang} />}
-          {page === "report" && <RewardsReport lang={langLabel} />}
-          {page === "balances" && <RewardsBalancesReport lang={langLabel} />}
-          {page === "projects" && <ProjectControl />}
-          {page === "timeline" && <ProjectTimelineByPhase />}
-          {page === "invoices" && <InvoicesManagement />}
-          {page === "management-holds" && <ManagementHolds />}
-          {page === "project-expenses" && <ProjectExpenses />}
-
-          {page === "future-approvals" && (
-            <PlaceholderPage
-              title="Approvals"
-              description="Área reservada para futuros módulos de aprovação."
-            />
+          {page === "home" && (
+            <HomePage onOpen={openPage} canOpen={(targetPage) => canAccess(targetPage, accessData)} />
           )}
+
+          {renderProtectedPage("crud", <RewardsCRUD lang={lang} />)}
+          {renderProtectedPage("approvals", <RewardsApprovals lang={lang} />)}
+          {renderProtectedPage("report", <RewardsReport lang={langLabel} />)}
+          {renderProtectedPage("balances", <RewardsBalancesReport lang={langLabel} />)}
+          {renderProtectedPage("projects", <ProjectControl />)}
+          {renderProtectedPage("timeline", <ProjectTimelineByPhase />)}
+          {renderProtectedPage("invoices", <InvoicesManagement />)}
+          {renderProtectedPage("management-access", <ManagementAccess />)}
+          {renderProtectedPage("management-holds", <ManagementHolds />)}
+          {renderProtectedPage("project-expenses", <ProjectExpenses />)}
+
+          {page === "future-approvals" &&
+            (canAccess("future-approvals", accessData) ? (
+              <PlaceholderPage
+                title="Approvals"
+                description="Área reservada para futuros módulos de aprovação."
+              />
+            ) : (
+              <AccessDeniedCard page="future-approvals" />
+            ))}
         </main>
       </div>
     </div>
