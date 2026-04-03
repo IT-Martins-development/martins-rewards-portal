@@ -16,6 +16,8 @@ type SummaryRow = {
   finModelReferenceId: string | null;
 };
 
+type ExpenseType = "vendor_bill" | "stock_valuation" | "stock_return" | "other";
+
 type DetailItem = {
   projectId: string;
   projectName: string;
@@ -36,6 +38,7 @@ type DetailItem = {
   financialModelReferenceId: string | null;
   costCenterFound: boolean;
   financialModelFound: boolean;
+  expenseType: ExpenseType;
 };
 
 type DetailGroup = {
@@ -91,7 +94,7 @@ type Filters = {
 };
 
 type DetailFlatRow = DetailItem & {
-  type: string;
+  typeLabel: string;
 };
 
 type DetailFilters = {
@@ -150,6 +153,37 @@ function formatDate(value?: string | null) {
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${mm}-${dd}-${yyyy}`;
+}
+
+function normalizeExpenseType(value: unknown): ExpenseType {
+  const raw = toStr(value).trim().toLowerCase();
+  if (raw === "vendor_bill") return "vendor_bill";
+  if (raw === "stock_valuation") return "stock_valuation";
+  if (raw === "stock_return") return "stock_return";
+  return "other";
+}
+
+function formatExpenseTypeLabel(value: ExpenseType) {
+  if (value === "vendor_bill") return "Vendor Bills";
+  if (value === "stock_valuation") return "Stock Valuation";
+  if (value === "stock_return") return "Stock Return";
+  return "Other";
+}
+
+function inferExpenseType(item: AnyObj): ExpenseType {
+  const explicitType = normalizeExpenseType(item?.type);
+  if (explicitType !== "other") return explicitType;
+
+  const invoiceNumber = toStr(item?.invoiceNumber).toUpperCase();
+  const vendor = toStr(item?.vendor).toUpperCase();
+
+  if (invoiceNumber.startsWith("WH/IN/")) return "stock_return";
+  if (invoiceNumber.startsWith("WH/OUT/")) return "stock_valuation";
+  if (vendor.includes("ESTOQUE/DEVOLUCAO")) return "stock_return";
+  if (vendor.includes("ESTOQUE/OUTROS")) return "stock_valuation";
+  if (invoiceNumber.startsWith("BILL/") || invoiceNumber.startsWith("BILL-")) return "vendor_bill";
+
+  return "other";
 }
 
 async function parseApiResponse(response: Response) {
@@ -230,6 +264,7 @@ function parseDetailData(payload: DetailApiResponse | AnyObj): DetailData | null
               : null,
             costCenterFound: !!item?.costCenterFound,
             financialModelFound: !!item?.financialModelFound,
+            expenseType: inferExpenseType(item),
           }))
         : [],
     })),
@@ -744,21 +779,29 @@ export default function ProjectExpenses() {
     return detailModal.data.groups.flatMap((group) =>
       group.items.map((item) => ({
         ...item,
-        type: group.groupName,
+        typeLabel: formatExpenseTypeLabel(item.expenseType),
       }))
     );
   }, [detailModal.data]);
 
   const detailTypeOptions = useMemo(() => {
-    const types = Array.from(new Set(detailRows.map((row) => row.type))).sort((a, b) =>
-      a.localeCompare(b)
+    const availableTypes = new Set(detailRows.map((row) => row.expenseType));
+    const options = [
+      { value: "All", label: "All" },
+      { value: "vendor_bill", label: "Vendor Bills" },
+      { value: "stock_valuation", label: "Stock Valuation" },
+      { value: "stock_return", label: "Stock Return" },
+    ];
+    const filtered = options.filter(
+      (option) => option.value === "All" || availableTypes.has(option.value as ExpenseType)
     );
-    return ["All", ...types];
+    return filtered.length > 1 ? filtered : options;
   }, [detailRows]);
 
   const filteredDetailRows = useMemo(() => {
     return detailRows.filter((item) => {
-      const matchesType = detailFilters.type === "All" || item.type === detailFilters.type;
+      const matchesType =
+        detailFilters.type === "All" || item.expenseType === detailFilters.type;
 
       const matchesService =
         !detailFilters.service ||
@@ -1118,8 +1161,8 @@ export default function ProjectExpenses() {
                           }
                         >
                           {detailTypeOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
+                            <option key={option.value} value={option.value}>
+                              {option.label}
                             </option>
                           ))}
                         </select>
@@ -1222,9 +1265,9 @@ export default function ProjectExpenses() {
                           </tr>
                         ) : (
                           filteredDetailRows.map((item, idx) => (
-                            <tr key={`${item.type}-${item.invoiceNumber}-${item.productId}-${idx}`}>
+                            <tr key={`${item.expenseType}-${item.invoiceNumber}-${item.productId}-${idx}`}>
                               <td style={S.td}>
-                                <div style={{ fontWeight: 800 }}>{item.type}</div>
+                                <div style={{ fontWeight: 800 }}>{item.typeLabel}</div>
                               </td>
                               <td style={S.td}>{formatDate(item.invoiceDate)}</td>
                               <td style={S.td}>
