@@ -88,6 +88,19 @@ def get_project_from_analytic_account(analytic_account):
         return analytic_account.project_ids[0]
     return False
 
+def get_vendor_bill_product_title(line):
+    """
+    Para vendor bill, o Service/Product da tela deve vir do produto da linha,
+    e não da descrição livre da bill.
+    """
+    if line.product_id and line.product_id.display_name:
+        return normalize_spaces(line.product_id.display_name)
+
+    if line.product_id and line.product_id.name:
+        return normalize_spaces(line.product_id.name)
+
+    return normalize_spaces(line.name or "Vendor Bill Line")
+
 def get_project_from_invoice_line(line):
     if getattr(line, "analytic_distribution", False):
         try:
@@ -162,6 +175,73 @@ def fetch_paid_vendor_bill_ids_after(last_id=0, limit=100):
     return [row[0] for row in env.cr.fetchall()]
 
 def build_vendor_bill_payloads(inv):
+    """
+    Quebra a mesma bill em múltiplos payloads, um por projeto.
+    Cada linha usa seu próprio analytic/project.
+    O campo title passa a usar o produto da linha da vendor bill.
+    """
+    grouped = {}
+
+    for line in inv.invoice_line_ids:
+        subtotal = abs_float(line.price_subtotal)
+        if subtotal <= 0:
+            continue
+
+        line_project = get_project_from_invoice_line(line)
+        if not line_project:
+            continue
+
+        project_id = str(line_project.id)
+        project_name = normalize_spaces(line_project.name or "")
+        if not project_name:
+            continue
+
+        if project_id not in grouped:
+            grouped[project_id] = {
+                "projectId": project_id,
+                "projectCode": project_name,
+                "items": [],
+                "amountTotal": 0.0,
+            }
+
+        grouped[project_id]["items"].append({
+            "productId": int(line.product_id.id) if line.product_id else int(line.id),
+            "title": get_vendor_bill_product_title(line),
+            "quantity": float(line.quantity or 0),
+            "priceUnit": abs_float(line.price_unit),
+            "subtotal": subtotal,
+            "projectId": project_id,
+            "projectCode": project_name,
+            "sourceDocument": inv.invoice_origin or ""
+        })
+
+        grouped[project_id]["amountTotal"] += subtotal
+
+    payloads = []
+
+    for project_id, data in grouped.items():
+        payloads.append({
+            "odooId": "%s-%s" % (inv.id, project_id),
+            "sourceOdooId": int(inv.id),
+            "projectId": data["projectId"],
+            "projectCode": data["projectCode"],
+            "amountTotal": round(data["amountTotal"], 2),
+            "date": iso_date_only(inv.invoice_date),
+            "invoiceNumber": inv.name or ("BILL-%s" % inv.id),
+            "status": "posted",
+            "type": "vendor_bill",
+            "sourceDocument": inv.invoice_origin or "",
+            "syncDate": iso_now(),
+            "updatedAt": iso_now(),
+            "paymentStatus": inv.payment_state or "",
+            "vendor": {
+                "name": inv.partner_id.name if inv.partner_id else "Unknown",
+                "odooPartnerId": int(inv.partner_id.id) if inv.partner_id else 0
+            },
+            "items": data["items"]
+        })
+
+    return payloads
     grouped = {}
 
     for line in inv.invoice_line_ids:
