@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 type PageSize = 10 | 25 | 50 | 100;
 type AnyObj = Record<string, any>;
 
+type SummaryTypeFilter = "All" | "vendor_bill" | "stock_valuation" | "stock_return";
+type ExpenseType = "vendor_bill" | "stock_valuation" | "stock_return" | "other";
+
 type SummaryRow = {
   projectId: string;
   projectName: string;
@@ -15,8 +18,6 @@ type SummaryRow = {
   invoiceCount: number;
   finModelReferenceId: string | null;
 };
-
-type ExpenseType = "vendor_bill" | "stock_valuation" | "stock_return" | "other";
 
 type DetailItem = {
   projectId: string;
@@ -39,6 +40,7 @@ type DetailItem = {
   costCenterFound: boolean;
   financialModelFound: boolean;
   expenseType: ExpenseType;
+  sourceDocument: string;
 };
 
 type DetailGroup = {
@@ -88,6 +90,7 @@ type Filters = {
   county: string;
   houseModelNumber: string;
   vendor: string;
+  type: SummaryTypeFilter;
   startDate: string;
   endDate: string;
   pageSize: PageSize;
@@ -98,7 +101,7 @@ type DetailFlatRow = DetailItem & {
 };
 
 type DetailFilters = {
-  type: string;
+  type: SummaryTypeFilter;
   service: string;
   vendor: string;
   status: "All" | "Classified" | "Unclassified";
@@ -113,7 +116,6 @@ type DetailModalState = {
 };
 
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 25, 50, 100];
-
 const PROJECT_EXPENSES_API_BASE =
   "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/finance-project-expenses";
 
@@ -181,9 +183,16 @@ function inferExpenseType(item: AnyObj): ExpenseType {
   if (invoiceNumber.startsWith("WH/OUT/")) return "stock_valuation";
   if (vendor.includes("ESTOQUE/DEVOLUCAO")) return "stock_return";
   if (vendor.includes("ESTOQUE/OUTROS")) return "stock_valuation";
-  if (invoiceNumber.startsWith("BILL/") || invoiceNumber.startsWith("BILL-")) return "vendor_bill";
+  if (invoiceNumber.startsWith("BILL/") || invoiceNumber.startsWith("BILL-")) {
+    return "vendor_bill";
+  }
 
   return "other";
+}
+
+function isValidProjectId(value: unknown) {
+  const id = toStr(value).trim();
+  return id.length > 0;
 }
 
 async function parseApiResponse(response: Response) {
@@ -203,18 +212,20 @@ async function parseApiResponse(response: Response) {
 function parseSummaryRows(data: SummaryApiResponse | AnyObj): SummaryRow[] {
   const rows = Array.isArray((data as AnyObj)?.data) ? (data as AnyObj).data : [];
 
-  return rows.map((row: AnyObj) => ({
-    projectId: toStr(row?.projectId ?? row?._id),
-    projectName: toStr(row?.projectName),
-    county: toStr(row?.county),
-    houseModelNumber: toStr(row?.houseModelNumber),
-    contractValue: round2(row?.contractValue),
-    totalExpenses: round2(row?.totalExpenses),
-    variance: round2(row?.variance),
-    percentSpent: round2(row?.percentSpent),
-    invoiceCount: toNum(row?.invoiceCount),
-    finModelReferenceId: row?.finModelReferenceId ? toStr(row.finModelReferenceId) : null,
-  }));
+  return rows
+    .map((row: AnyObj) => ({
+      projectId: toStr(row?.projectId ?? row?._id).trim(),
+      projectName: toStr(row?.projectName).trim(),
+      county: toStr(row?.county).trim(),
+      houseModelNumber: toStr(row?.houseModelNumber).trim(),
+      contractValue: round2(row?.contractValue),
+      totalExpenses: round2(row?.totalExpenses),
+      variance: round2(row?.variance),
+      percentSpent: round2(row?.percentSpent),
+      invoiceCount: toNum(row?.invoiceCount),
+      finModelReferenceId: row?.finModelReferenceId ? toStr(row.finModelReferenceId) : null,
+    }))
+    .filter((row: SummaryRow) => row.projectName || row.projectId);
 }
 
 function parseDetailData(payload: DetailApiResponse | AnyObj): DetailData | null {
@@ -265,6 +276,7 @@ function parseDetailData(payload: DetailApiResponse | AnyObj): DetailData | null
             costCenterFound: !!item?.costCenterFound,
             financialModelFound: !!item?.financialModelFound,
             expenseType: inferExpenseType(item),
+            sourceDocument: toStr(item?.sourceDocument),
           }))
         : [],
     })),
@@ -390,6 +402,7 @@ export default function ProjectExpenses() {
     county: "",
     houseModelNumber: "",
     vendor: "",
+    type: "All",
     startDate: "",
     endDate: "",
     pageSize: 25,
@@ -500,6 +513,17 @@ export default function ProjectExpenses() {
       borderRadius: 12,
       fontWeight: 800,
       cursor: "pointer",
+      height: 42,
+      whiteSpace: "nowrap",
+    },
+    btnDisabled: {
+      background: "#e5e7eb",
+      color: "#9ca3af",
+      border: "1px solid rgba(17,24,39,0.08)",
+      padding: "10px 14px",
+      borderRadius: 12,
+      fontWeight: 800,
+      cursor: "not-allowed",
       height: 42,
       whiteSpace: "nowrap",
     },
@@ -631,6 +655,12 @@ export default function ProjectExpenses() {
       marginBottom: 14,
       fontWeight: 700,
     },
+    warningText: {
+      color: "#b45309",
+      fontSize: 12,
+      fontWeight: 700,
+      marginTop: 6,
+    },
   };
 
   const loadSummary = useCallback(async () => {
@@ -645,6 +675,7 @@ export default function ProjectExpenses() {
         county: filters.county.trim() || undefined,
         houseModelNumber: filters.houseModelNumber.trim() || undefined,
         vendor: filters.vendor.trim() || undefined,
+        type: filters.type !== "All" ? filters.type : undefined,
         startDate: filters.startDate || undefined,
         endDate: filters.endDate || undefined,
       };
@@ -677,10 +708,16 @@ export default function ProjectExpenses() {
 
   const openDetails = useCallback(
     async (row: SummaryRow) => {
+      if (!isValidProjectId(row.projectId)) {
+        setDetailModal({ open: true, loading: false, data: null });
+        setDetailError("This row does not have a valid projectId to load details.");
+        return;
+      }
+
       setDetailModal({ open: true, loading: true, data: null });
       setDetailError("");
       setDetailFilters({
-        type: "All",
+        type: filters.type,
         service: "",
         vendor: "",
         status: "All",
@@ -695,6 +732,7 @@ export default function ProjectExpenses() {
           body: JSON.stringify({
             action: "details",
             projectId: row.projectId,
+            type: filters.type !== "All" ? filters.type : undefined,
             product: filters.product.trim() || undefined,
             vendor: filters.vendor.trim() || undefined,
             startDate: filters.startDate || undefined,
@@ -707,7 +745,11 @@ export default function ProjectExpenses() {
           throw new Error(data?.message || "Failed to load project expense details.");
         }
 
-        setDetailModal({ open: true, loading: false, data: parseDetailData(data) });
+        const parsed = parseDetailData(data);
+        setDetailModal({ open: true, loading: false, data: parsed });
+        if (!parsed) {
+          setDetailError("No detail data returned for this project.");
+        }
       } catch (e: any) {
         console.error(e);
         setDetailModal({ open: true, loading: false, data: null });
@@ -729,6 +771,7 @@ export default function ProjectExpenses() {
       county: "",
       houseModelNumber: "",
       vendor: "",
+      type: "All",
       startDate: "",
       endDate: "",
       pageSize: 25,
@@ -747,9 +790,7 @@ export default function ProjectExpenses() {
     });
   }, []);
 
-  const totalPages = useMemo(() => {
-    return Math.max(1, Math.ceil(rows.length / filters.pageSize));
-  }, [rows.length, filters.pageSize]);
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(rows.length / filters.pageSize)), [rows.length, filters.pageSize]);
 
   const paginatedRows = useMemo(() => {
     const start = (page - 1) * filters.pageSize;
@@ -784,56 +825,37 @@ export default function ProjectExpenses() {
     );
   }, [detailModal.data]);
 
-  const detailTypeOptions = useMemo(() => {
-    const availableTypes = new Set(detailRows.map((row) => row.expenseType));
-    const options = [
+  const detailTypeOptions = useMemo(
+    () => [
       { value: "All", label: "All" },
       { value: "vendor_bill", label: "Vendor Bills" },
       { value: "stock_valuation", label: "Stock Valuation" },
       { value: "stock_return", label: "Stock Return" },
-    ];
-    const filtered = options.filter(
-      (option) => option.value === "All" || availableTypes.has(option.value as ExpenseType)
-    );
-    return filtered.length > 1 ? filtered : options;
-  }, [detailRows]);
+    ],
+    []
+  );
 
   const filteredDetailRows = useMemo(() => {
     return detailRows.filter((item) => {
-      const matchesType =
-        detailFilters.type === "All" || item.expenseType === detailFilters.type;
-
+      const matchesType = detailFilters.type === "All" || item.expenseType === detailFilters.type;
       const matchesService =
         !detailFilters.service ||
         item.productTitle.toLowerCase().includes(detailFilters.service.toLowerCase());
-
       const matchesVendor =
         !detailFilters.vendor ||
         item.vendor.toLowerCase().includes(detailFilters.vendor.toLowerCase());
-
       const matchesStatus =
         detailFilters.status === "All" || item.classificationStatus === detailFilters.status;
 
       const itemTime = item.invoiceDate ? new Date(item.invoiceDate).getTime() : null;
-
       const matchesStart =
         !detailFilters.startDate ||
-        (itemTime !== null &&
-          itemTime >= new Date(`${detailFilters.startDate}T00:00:00`).getTime());
-
+        (itemTime !== null && itemTime >= new Date(`${detailFilters.startDate}T00:00:00`).getTime());
       const matchesEnd =
         !detailFilters.endDate ||
-        (itemTime !== null &&
-          itemTime <= new Date(`${detailFilters.endDate}T23:59:59`).getTime());
+        (itemTime !== null && itemTime <= new Date(`${detailFilters.endDate}T23:59:59`).getTime());
 
-      return (
-        matchesType &&
-        matchesService &&
-        matchesVendor &&
-        matchesStatus &&
-        matchesStart &&
-        matchesEnd
-      );
+      return matchesType && matchesService && matchesVendor && matchesStatus && matchesStart && matchesEnd;
     });
   }, [detailRows, detailFilters]);
 
@@ -928,6 +950,25 @@ export default function ProjectExpenses() {
           </div>
 
           <div style={S.field}>
+            <label style={S.label}>Type</label>
+            <select
+              style={S.input}
+              value={filters.type}
+              onChange={(e) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  type: e.target.value as SummaryTypeFilter,
+                }))
+              }
+            >
+              <option value="All">All</option>
+              <option value="stock_valuation">Stock Valuation</option>
+              <option value="vendor_bill">Vendor Bills</option>
+              <option value="stock_return">Stock Return</option>
+            </select>
+          </div>
+
+          <div style={S.field}>
             <label style={S.label}>Date From</label>
             <input
               type="date"
@@ -979,26 +1020,10 @@ export default function ProjectExpenses() {
       </div>
 
       <div style={S.cardsGrid}>
-        <SummaryCard
-          title="Projects"
-          value={rows.length}
-          subtitle="Projects returned by current filters"
-        />
-        <SummaryCard
-          title="Contract Value"
-          value={formatMoney(totals.contractValue)}
-          subtitle="Sum of project contract values"
-        />
-        <SummaryCard
-          title="Total Expenses"
-          value={formatMoney(totals.totalExpenses)}
-          subtitle="Sum of invoice expenses"
-        />
-        <SummaryCard
-          title="Invoices"
-          value={totals.invoiceCount}
-          subtitle="Invoices counted in the summary"
-        />
+        <SummaryCard title="Projects" value={rows.length} subtitle="Projects returned by current filters" />
+        <SummaryCard title="Contract Value" value={formatMoney(totals.contractValue)} subtitle="Sum of project contract values" />
+        <SummaryCard title="Total Expenses" value={formatMoney(totals.totalExpenses)} subtitle="Sum of invoice expenses" />
+        <SummaryCard title="Invoices" value={totals.invoiceCount} subtitle="Invoices counted in the summary" />
       </div>
 
       <div style={S.tableWrap}>
@@ -1030,28 +1055,42 @@ export default function ProjectExpenses() {
                 </td>
               </tr>
             ) : (
-              paginatedRows.map((row) => (
-                <tr key={row.projectId}>
-                  <td style={S.td}>
-                    <div style={{ fontWeight: 900 }}>{row.projectName || row.projectId}</div>
-                    <div style={{ color: "rgba(17,24,39,0.55)", fontSize: 12 }}>{row.projectId}</div>
-                  </td>
-                  <td style={S.td}>{row.county || "-"}</td>
-                  <td style={S.td}>{row.houseModelNumber || "-"}</td>
-                  <td style={S.td}>{formatMoney(row.contractValue)}</td>
-                  <td style={S.td}>{formatMoney(row.totalExpenses)}</td>
-                  <td style={S.td}>{formatMoney(row.variance)}</td>
-                  <td style={S.td}>
-                    <SpendBadge value={row.percentSpent} />
-                  </td>
-                  <td style={S.td}>{row.invoiceCount}</td>
-                  <td style={S.td}>
-                    <button type="button" style={S.btnPrimary} onClick={() => void openDetails(row)}>
-                      Details
-                    </button>
-                  </td>
-                </tr>
-              ))
+              paginatedRows.map((row, index) => {
+                const hasProjectId = isValidProjectId(row.projectId);
+                return (
+                  <tr key={`${row.projectId || row.projectName}-${index}`}>
+                    <td style={S.td}>
+                      <div style={{ fontWeight: 900 }}>{row.projectName || row.projectId || "-"}</div>
+                      <div style={{ color: "rgba(17,24,39,0.55)", fontSize: 12 }}>
+                        {row.projectId || "No projectId"}
+                      </div>
+                      {!hasProjectId ? (
+                        <div style={S.warningText}>Missing valid projectId for details</div>
+                      ) : null}
+                    </td>
+                    <td style={S.td}>{row.county || "-"}</td>
+                    <td style={S.td}>{row.houseModelNumber || "-"}</td>
+                    <td style={S.td}>{formatMoney(row.contractValue)}</td>
+                    <td style={S.td}>{formatMoney(row.totalExpenses)}</td>
+                    <td style={S.td}>{formatMoney(row.variance)}</td>
+                    <td style={S.td}>
+                      <SpendBadge value={row.percentSpent} />
+                    </td>
+                    <td style={S.td}>{row.invoiceCount}</td>
+                    <td style={S.td}>
+                      <button
+                        type="button"
+                        style={hasProjectId ? S.btnPrimary : S.btnDisabled}
+                        onClick={() => void openDetails(row)}
+                        disabled={!hasProjectId}
+                        title={hasProjectId ? "Open details" : "Missing projectId"}
+                      >
+                        Details
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -1121,31 +1160,13 @@ export default function ProjectExpenses() {
               ) : detailModal.data ? (
                 <>
                   <div style={S.cardsGrid}>
-                    <SummaryCard
-                      title="Actual Cost"
-                      value={formatMoney(filteredDetailTotals.totalActual)}
-                      subtitle="Sum of actual invoice items"
-                    />
-                    <SummaryCard
-                      title="Budgeted Cost"
-                      value={formatMoney(filteredDetailTotals.totalBudget)}
-                      subtitle="Estimated amount from financial model"
-                    />
-                    <SummaryCard
-                      title="Variance"
-                      value={formatMoney(filteredDetailTotals.totalVariance)}
-                      subtitle="Actual minus budgeted"
-                    />
+                    <SummaryCard title="Actual Cost" value={formatMoney(filteredDetailTotals.totalActual)} subtitle="Sum of actual invoice items" />
+                    <SummaryCard title="Budgeted Cost" value={formatMoney(filteredDetailTotals.totalBudget)} subtitle="Estimated amount from financial model" />
+                    <SummaryCard title="Variance" value={formatMoney(filteredDetailTotals.totalVariance)} subtitle="Actual minus budgeted" />
                     <SummaryCard
                       title="Classification"
-                      value={
-                        detailModal.data.financialModelFound
-                          ? "Financial Model Found"
-                          : "No Financial Model"
-                      }
-                      subtitle={
-                        detailModal.data.financialModelReferenceId || "No financial model linked"
-                      }
+                      value={detailModal.data.financialModelFound ? "Financial Model Found" : "No Financial Model"}
+                      subtitle={detailModal.data.financialModelReferenceId || "No financial model linked"}
                     />
                   </div>
 
@@ -1157,7 +1178,10 @@ export default function ProjectExpenses() {
                           style={S.input}
                           value={detailFilters.type}
                           onChange={(e) =>
-                            setDetailFilters((prev) => ({ ...prev, type: e.target.value }))
+                            setDetailFilters((prev) => ({
+                              ...prev,
+                              type: e.target.value as SummaryTypeFilter,
+                            }))
                           }
                         >
                           {detailTypeOptions.map((option) => (
@@ -1268,6 +1292,11 @@ export default function ProjectExpenses() {
                             <tr key={`${item.expenseType}-${item.invoiceNumber}-${item.productId}-${idx}`}>
                               <td style={S.td}>
                                 <div style={{ fontWeight: 800 }}>{item.typeLabel}</div>
+                                {item.sourceDocument ? (
+                                  <div style={{ color: "rgba(17,24,39,0.55)", fontSize: 12 }}>
+                                    {item.sourceDocument}
+                                  </div>
+                                ) : null}
                               </td>
                               <td style={S.td}>{formatDate(item.invoiceDate)}</td>
                               <td style={S.td}>
