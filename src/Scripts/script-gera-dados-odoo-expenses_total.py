@@ -9,7 +9,7 @@ INGEST_URL = "https://2kg0lpfvda.execute-api.us-east-2.amazonaws.com/main/odoo/i
 # CONFIG
 # =========================================================
 
-VENDOR_BATCH_SIZE = 500
+VENDOR_BATCH_SIZE = 550
 STOCK_BATCH_SIZE = 500
 
 API_SLEEP_BETWEEN_REQUESTS = 0.03
