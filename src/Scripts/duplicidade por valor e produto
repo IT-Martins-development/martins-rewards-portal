@@ -1,0 +1,71 @@
+[
+  {
+    $match: {
+      items: { $exists: true, $ne: [] }
+    }
+  },
+  {
+    $project: {
+      invoiceNumber: 1,
+      odooId: 1,
+      projectId: 1,
+      projectCode: 1,
+      vendor: "$vendor.name",
+      date: 1,
+      type: 1,
+      items: 1
+    }
+  },
+  {
+    $unwind: "$items"
+  },
+  {
+    $group: {
+      _id: {
+        projectId: "$items.projectId",
+        projectCode: "$items.projectCode",
+        productId: "$items.productId",
+        subtotal: "$items.subtotal"
+      },
+      count: { $sum: 1 },
+      occurrences: {
+        $push: {
+          docId: "$_id",
+          invoiceNumber: "$invoiceNumber",
+          odooId: "$odooId",
+          vendor: "$vendor",
+          date: "$date",
+          type: "$type",
+          title: "$items.title",
+          quantity: "$items.quantity",
+          priceUnit: "$items.priceUnit",
+          subtotal: "$items.subtotal",
+          sourceDocument: "$items.sourceDocument"
+        }
+      }
+    }
+  },
+  {
+    $match: {
+      count: { $gt: 1 }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      projectId: "$_id.projectId",
+      projectCode: "$_id.projectCode",
+      productId: "$_id.productId",
+      subtotal: "$_id.subtotal",
+      duplicateCount: "$count",
+      occurrences: 1
+    }
+  },
+  {
+    $sort: {
+      projectCode: 1,
+      productId: 1,
+      subtotal: 1
+    }
+  }
+]
