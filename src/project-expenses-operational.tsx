@@ -222,26 +222,31 @@ function parseSummaryRows(data: SummaryApiResponse | AnyObj): SummaryRow[] {
   const rows = Array.isArray((data as AnyObj)?.data) ? (data as AnyObj).data : [];
 
   return rows
-    .map((row: AnyObj) => ({
-      projectId: toStr(row?.projectId ?? row?._id).trim(),
-      projectName: toStr(row?.projectName).trim(),
-      county: toStr(row?.county).trim(),
-      houseModelNumber: toStr(row?.houseModelNumber).trim(),
-      budgetedTotal: getBudgetedValue(row),
-      totalExpenses: round2(row?.totalExpenses),
-      variance:
+    .map((row: AnyObj) => {
+      const budgetedTotal = getBudgetedValue(row);
+      const totalExpenses = round2(row?.totalExpenses);
+
+      const variance =
         row?.variance !== undefined && row?.variance !== null
           ? round2(row?.variance)
-          : round2(getBudgetedValue(row) - round2(row?.totalExpenses)),
-      percentSpent:
-        row?.percentSpent !== undefined && row?.percentSpent !== null
-          ? round2(row?.percentSpent)
-          : getBudgetedValue(row) !== 0
-          ? round2((round2(row?.totalExpenses) / getBudgetedValue(row)) * 100)
-          : 0,
-      invoiceCount: toNum(row?.invoiceCount),
-      finModelReferenceId: row?.finModelReferenceId ? toStr(row.finModelReferenceId) : null,
-    }))
+          : round2(budgetedTotal - totalExpenses);
+
+      const percentSpent =
+        budgetedTotal > 0 ? round2((totalExpenses / budgetedTotal) * 100) : 0;
+
+      return {
+        projectId: toStr(row?.projectId ?? row?._id).trim(),
+        projectName: toStr(row?.projectName).trim(),
+        county: toStr(row?.county).trim(),
+        houseModelNumber: toStr(row?.houseModelNumber).trim(),
+        budgetedTotal,
+        totalExpenses,
+        variance,
+        percentSpent,
+        invoiceCount: toNum(row?.invoiceCount),
+        finModelReferenceId: row?.finModelReferenceId ? toStr(row.finModelReferenceId) : null,
+      };
+    })
     .filter((row: SummaryRow) => row.projectName || row.projectId);
 }
 
