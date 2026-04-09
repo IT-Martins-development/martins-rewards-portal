@@ -223,28 +223,40 @@ function parseSummaryRows(data: SummaryApiResponse | AnyObj): SummaryRow[] {
 
   return rows
     .map((row: AnyObj) => {
-      const budgetedTotal = getBudgetedValue(row);
+      const projectId = toStr(row?.projectId ?? row?._id).trim();
+      const projectName = toStr(row?.projectName).trim();
+      const county = toStr(row?.county).trim();
+      const houseModelNumber = toStr(row?.houseModelNumber).trim();
+
+      const budgetedTotal = round2(
+        row?.budgetedTotal ??
+          row?.budgetedCost ??
+          row?.totalBudget ??
+          row?.budget ??
+          0
+      );
+
       const totalExpenses = round2(row?.totalExpenses);
 
-      const variance =
-        row?.variance !== undefined && row?.variance !== null
-          ? round2(row?.variance)
-          : round2(budgetedTotal - totalExpenses);
-
+      // IMPORTANTE:
+      // Não usar row?.variance nem row?.percentSpent na tela operacional
+      const variance = round2(budgetedTotal - totalExpenses);
       const percentSpent =
         budgetedTotal > 0 ? round2((totalExpenses / budgetedTotal) * 100) : 0;
 
       return {
-        projectId: toStr(row?.projectId ?? row?._id).trim(),
-        projectName: toStr(row?.projectName).trim(),
-        county: toStr(row?.county).trim(),
-        houseModelNumber: toStr(row?.houseModelNumber).trim(),
+        projectId,
+        projectName,
+        county,
+        houseModelNumber,
         budgetedTotal,
         totalExpenses,
         variance,
         percentSpent,
         invoiceCount: toNum(row?.invoiceCount),
-        finModelReferenceId: row?.finModelReferenceId ? toStr(row.finModelReferenceId) : null,
+        finModelReferenceId: row?.finModelReferenceId
+          ? toStr(row.finModelReferenceId)
+          : null,
       };
     })
     .filter((row: SummaryRow) => row.projectName || row.projectId);
