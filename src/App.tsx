@@ -16,6 +16,7 @@ import InvoicesManagement from "./InvoicesManagement";
 import ManagementAccess from "./ManagementAccess";
 import ManagementHolds from "./management-holds";
 import ProjectExpenses from "./project-expenses";
+import ProjectExpensesOperational from "./project-expenses-operational";
 
 import type { Lang } from "./types/lang";
 export type { Lang } from "./types/lang";
@@ -34,6 +35,7 @@ type Page =
   | "management-access"
   | "management-holds"
   | "project-expenses"
+  | "project-expenses-operational"
   | "future-approvals";
 
 type MenuGroupKey =
@@ -275,6 +277,11 @@ function HomePage({
       title: "Project Expenses",
       description: "Consulte despesas por projeto e compare com o contract value.",
     },
+    {
+      page: "project-expenses-operational",
+      title: "Project Expenses Operacional",
+      description: "Consulte despesas por projeto e compare com o budgeted.",
+    },
   ];
 
   const visibleLinks = quickLinks.filter((item) => canOpen(item.page));
@@ -393,6 +400,7 @@ function AppShell({ signOut }: { signOut?: () => void }) {
     "management-access": "approvals",
     "management-holds": "finance",
     "project-expenses": "finance",
+    "project-expenses-operational": "finance",
     "future-approvals": "approvals",
   };
 
@@ -749,6 +757,15 @@ function AppShell({ signOut }: { signOut?: () => void }) {
                 Project Expenses
               </button>
             )}
+
+            {canAccess("project-expenses-operational", accessData) && (
+              <button
+                style={page === "project-expenses-operational" ? subBtnActive : subBtnBase}
+                onClick={() => openPage("project-expenses-operational")}
+              >
+                Project Expenses Operacional
+              </button>
+            )}
           </MenuGroup>
 
           <MenuGroup
@@ -802,6 +819,10 @@ function AppShell({ signOut }: { signOut?: () => void }) {
           {renderProtectedPage("management-access", <ManagementAccess />)}
           {renderProtectedPage("management-holds", <ManagementHolds />)}
           {renderProtectedPage("project-expenses", <ProjectExpenses />)}
+          {renderProtectedPage(
+            "project-expenses-operational",
+            <ProjectExpensesOperational />
+          )}
 
           {page === "future-approvals" &&
             (canAccess("future-approvals", accessData) ? (
