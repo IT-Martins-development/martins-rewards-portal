@@ -23,7 +23,7 @@ STOCK_BATCH_SIZE = 500
 # =========================================================
 
 today = datetime.utcnow().date()
-yesterday = today - timedelta(days=1)
+yesterday = today - timedelta(days=2)
 
 START_UTC = "%s 00:00:00" % yesterday.strftime("%Y-%m-%d")
 END_UTC = "%s 00:00:00" % today.strftime("%Y-%m-%d")
