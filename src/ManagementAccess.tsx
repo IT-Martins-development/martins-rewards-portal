@@ -42,6 +42,7 @@ const AVAILABLE_PAGES = [
   { key: "invoices", label: "Invoices" },
   { key: "management-holds", label: "Management Hold" },
   { key: "project-expenses", label: "Project Expenses" },
+  { key: "project-expenses-operational", label: "Project Expenses Operacional" },
   { key: "future-approvals", label: "Future Approvals" },
 ] as const;
 
@@ -191,7 +192,7 @@ export default function ManagementAccess() {
   });
   const [preview, setPreview] = useState<UserPreview>({
     email: "",
-    page: "project-expenses",
+    page: "project-expenses-operational",
     allowed: null,
     loading: false,
     message: "",
